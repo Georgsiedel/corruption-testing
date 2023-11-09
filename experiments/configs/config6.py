@@ -10,7 +10,7 @@ train_corruptions = np.array([
 ['uniform-linf', 0.06, False],
 ['uniform-l0.5', 25000.0, False],
 ['uniform-l0.5', 50000.0, False],
-['uniform-l0.5', 75000.0, False],
+['uniform-l0.5', 75000.0, False], 
 ['uniform-l0.5', 100000.0, False],
 ['uniform-l0.5', 150000.0, False],
 ['uniform-l0.5', 200000.0, False],
@@ -202,7 +202,7 @@ autoattack_params = {'setsize': 1000, 'epsilon': 8/255, 'norm': 'Linf'}
 
 test_count = 2
 if test_on_c:
-    test_count += 20
+    test_count += 22
 if combine_test_corruptions:
     test_count += 1
 else:

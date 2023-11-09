@@ -65,7 +65,7 @@ earlystopPatience = 15
 optimizer = 'SGD'
 optimizerparams = {'momentum': 0.9, 'weight_decay': 2e-5}
 number_workers = 1
-modeltype = 'ResNeXt29_8x64d'
+modeltype = 'WideResNet_28_12'
 modelparams = {}
 resize = False
 aug_strat_check = True
@@ -202,7 +202,7 @@ autoattack_params = {'setsize': 1000, 'epsilon': 8/255, 'norm': 'Linf'}
 
 test_count = 2
 if test_on_c:
-    test_count += 20
+    test_count += 22
 if combine_test_corruptions:
     test_count += 1
 else:
