@@ -5,7 +5,7 @@ train_corruptions = np.array([
 #['standard', 0.0, False]
 ['uniform-l0.5', 25000.0, False],
 ['uniform-l0.5', 50000.0, False],
-['uniform-l0.5', 75000.0, False],
+['uniform-l0.5', 75000.0, False], 
 ['uniform-l0.5', 100000.0, False],
 ['uniform-l0.5', 150000.0, False],
 ['uniform-l0.5', 200000.0, False],
