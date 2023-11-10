@@ -3,11 +3,6 @@ import torchvision.models.mobilenet
 
 train_corruptions = np.array([
 #['standard', 0.0, False],
-['uniform-linf', 0.01, False],
-['uniform-linf', 0.02, False],
-['uniform-linf', 0.03, False],
-['uniform-linf', 0.04, False],
-['uniform-linf', 0.06, False],
 ['uniform-l0.5', 25000.0, False],
 ['uniform-l0.5', 50000.0, False],
 ['uniform-l0.5', 75000.0, False],
@@ -53,7 +48,7 @@ elif dataset == 'ImageNet':
 elif dataset == 'TinyImageNet':
     num_classes = 200
     pixel_factor = 2
-normalize = False
+normalize = True
 validontest = True
 lrschedule = 'CosineAnnealingWarmRestarts'
 learningrate = 0.1
@@ -202,7 +197,7 @@ autoattack_params = {'setsize': 1000, 'epsilon': 8/255, 'norm': 'Linf'}
 
 test_count = 2
 if test_on_c:
-    test_count += 20
+    test_count += 22
 if combine_test_corruptions:
     test_count += 1
 else:

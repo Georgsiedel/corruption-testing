@@ -2,7 +2,7 @@ import numpy as np
 import torchvision.models.mobilenet
 
 train_corruptions = np.array([
-#['standard', 0.0, False]
+#['standard', 0.0, False],
 ['uniform-l0.5', 25000.0, False],
 ['uniform-l0.5', 50000.0, False],
 ['uniform-l0.5', 75000.0, False],
@@ -48,7 +48,7 @@ elif dataset == 'ImageNet':
 elif dataset == 'TinyImageNet':
     num_classes = 200
     pixel_factor = 2
-normalize = False
+normalize = True
 validontest = True
 lrschedule = 'CosineAnnealingWarmRestarts'
 learningrate = 0.1
@@ -60,8 +60,8 @@ earlystopPatience = 15
 optimizer = 'SGD'
 optimizerparams = {'momentum': 0.9, 'weight_decay': 2e-5}
 number_workers = 1
-modeltype = 'WideResNet_28_12'
-modelparams = {'dropout_rate': 0.1}
+modeltype = 'DenseNet201_32'
+modelparams = {}
 resize = False
 aug_strat_check = True
 train_aug_strat = 'TrivialAugmentWide' #TrivialAugmentWide, RandAugment, AutoAugment, AugMix
@@ -197,7 +197,7 @@ autoattack_params = {'setsize': 1000, 'epsilon': 8/255, 'norm': 'Linf'}
 
 test_count = 2
 if test_on_c:
-    test_count += 22
+    test_count += 20
 if combine_test_corruptions:
     test_count += 1
 else:

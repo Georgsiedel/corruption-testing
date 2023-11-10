@@ -5,6 +5,7 @@ See the paper "Aggregated Residual Transformations for Deep Neural Networks" for
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from experiments.models import ct_model
 
 
 class Block(nn.Module):
@@ -37,9 +38,9 @@ class Block(nn.Module):
         return out
 
 
-class ResNeXt(nn.Module):
-    def __init__(self, num_blocks, cardinality, bottleneck_width, num_classes=10, factor=1):
-        super(ResNeXt, self).__init__()
+class ResNeXt(ct_model.CtModel):
+    def __init__(self, num_blocks, cardinality, bottleneck_width, dataset, normalized, num_classes=10, factor=1):
+        super(ResNeXt, self).__init__(dataset=dataset, normalized=normalized)
         self.cardinality = cardinality
         self.bottleneck_width = bottleneck_width
         self.in_planes = 64
@@ -63,7 +64,7 @@ class ResNeXt(nn.Module):
         self.bottleneck_width *= 2
         return nn.Sequential(*layers)
 
-    def forward(self, x):
+    def forward_ctmodel(self, x):
         out = F.relu(self.bn1(self.conv1(x)))
         out = self.layer1(out)
         out = self.layer2(out)
@@ -75,17 +76,17 @@ class ResNeXt(nn.Module):
         return out
 
 
-def ResNeXt29_2x64d(num_classes, factor):
-    return ResNeXt(num_blocks=[3,3,3], cardinality=2, bottleneck_width=64, num_classes=num_classes, factor=factor)
+def ResNeXt29_2x64d(dataset, normalized, num_classes, factor):
+    return ResNeXt(num_blocks=[3,3,3], cardinality=2, bottleneck_width=64, dataset=dataset, normalized=normalized, num_classes=num_classes, factor=factor)
 
-def ResNeXt29_4x64d(num_classes, factor):
-    return ResNeXt(num_blocks=[3,3,3], cardinality=4, bottleneck_width=64, num_classes=num_classes, factor=factor)
+def ResNeXt29_4x64d(dataset, normalized, num_classes, factor):
+    return ResNeXt(num_blocks=[3,3,3], cardinality=4, bottleneck_width=64, dataset=dataset, normalized=normalized, num_classes=num_classes, factor=factor)
 
-def ResNeXt29_8x64d(num_classes, factor):
-    return ResNeXt(num_blocks=[3,3,3], cardinality=8, bottleneck_width=64, num_classes=num_classes, factor=factor)
+def ResNeXt29_8x64d(dataset, normalized, num_classes, factor):
+    return ResNeXt(num_blocks=[3,3,3], cardinality=8, bottleneck_width=64, dataset=dataset, normalized=normalized, num_classes=num_classes, factor=factor)
 
-def ResNeXt29_32x4d(num_classes, factor):
-    return ResNeXt(num_blocks=[3,3,3], cardinality=32, bottleneck_width=4, num_classes=num_classes, factor=factor)
+def ResNeXt29_32x4d(dataset, normalized, num_classes, factor):
+    return ResNeXt(num_blocks=[3,3,3], cardinality=32, bottleneck_width=4, dataset=dataset, normalized=normalized, num_classes=num_classes, factor=factor)
 
 def test_resnext():
     net = ResNeXt29_2x64d()

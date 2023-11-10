@@ -5,7 +5,7 @@ from __future__ import print_function
 import torch
 import experiments.models as low_dim_models
 
-def create_normalized_model_wrapper(dataset, modeltype):
+def create_normalized_model_wrapper(dataset, model):
     if dataset == 'CIFAR10':
         mean = torch.tensor([0.4914, 0.4822, 0.4465]).view(1, 3, 1, 1)
         std = torch.tensor([0.247, 0.243, 0.261]).view(1, 3, 1, 1)
@@ -16,9 +16,7 @@ def create_normalized_model_wrapper(dataset, modeltype):
         mean = torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1)
         std = torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1)
 
-    model = getattr(low_dim_models, modeltype)
-
-    class Normalized_Model_Wrapper(model):
+    class Normalized_Model_Wrapper(model.__class__):
         def __init__(self, **kwargs):
             super(Normalized_Model_Wrapper, self).__init__(**kwargs)
             self.register_buffer('mu', mean)

@@ -22,7 +22,7 @@ import torch.backends.cudnn as cudnn
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 #torch.backends.cudnn.enabled = False #this may resolve some cuDNN errors, but increases training time by ~200%
 torch.cuda.set_device(0)
-cudnn.benchmark = True #this slightly speeds up 32bit precision training (5%)
+cudnn.benchmark = False #this slightly speeds up 32bit precision training (5%)
 
 def str2bool(v):
     if isinstance(v, bool):
@@ -157,8 +157,6 @@ def train(pbar):
             inputs = torch.cat((inputs_orig, inputs, inputs_pert), 0)
         if args.resize == True:
             inputs = transforms.Resize(224, antialias=True)(inputs)
-        if args.normalize == True:
-            inputs = normalize(inputs, args.dataset)
 
         inputs, targets = inputs.to(device, dtype=torch.float32), targets.to(device)
         with torch.cuda.amp.autocast():
@@ -200,8 +198,6 @@ def valid(pbar):
 
             if args.resize == True:
                 inputs = transforms.Resize(224, antialias=True)(inputs)
-            if args.normalize == True:
-                inputs = normalize(inputs, args.dataset)
             inputs, targets = inputs.to(device, dtype=torch.float32), targets.to(device)
             targets_pert = targets
 
@@ -267,7 +263,7 @@ if __name__ == '__main__':
           f' | JSD loss: {args.jsd_loss}')
     if args.dataset == 'CIFAR10' or 'CIFAR100' or 'TinyImageNet':
         model_class = getattr(low_dim_models, args.modeltype)
-        model = model_class(num_classes=args.num_classes, factor=args.pixel_factor, **args.modelparams)
+        model = model_class(dataset=args.dataset, normalized =args.normalize, num_classes=args.num_classes, factor=args.pixel_factor, **args.modelparams)
     else:
         model_class = getattr(torchmodels, args.modeltype)
         model = model_class(num_classes = args.num_classes, **args.modelparams)

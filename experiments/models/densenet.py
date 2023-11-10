@@ -4,6 +4,7 @@ import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from experiments.models import ct_model
 
 
 class Bottleneck(nn.Module):
@@ -33,9 +34,9 @@ class Transition(nn.Module):
         return out
 
 
-class DenseNet(nn.Module):
-    def __init__(self, block, nblocks, growth_rate=12, reduction=0.5, num_classes=10, factor=1):
-        super(DenseNet, self).__init__()
+class DenseNet(ct_model.CtModel):
+    def __init__(self, block, nblocks, growth_rate, dataset, normalized, reduction=0.5, num_classes=10, factor=1):
+        super(DenseNet, self).__init__(dataset=dataset, normalized=normalized)
         self.growth_rate = growth_rate
         self.factor = factor
 
@@ -73,7 +74,7 @@ class DenseNet(nn.Module):
             in_planes += self.growth_rate
         return nn.Sequential(*layers)
 
-    def forward(self, x):
+    def forward_ctmodel(self, x):
         out = self.conv1(x)
         out = self.trans1(self.dense1(out))
         out = self.trans2(self.dense2(out))
@@ -84,28 +85,20 @@ class DenseNet(nn.Module):
         out = self.linear(out)
         return out
 
-def DenseNet121_32(num_classes, factor):
-    return DenseNet(Bottleneck, [6,12,24,16], growth_rate=32, num_classes=num_classes, factor=factor)
+def DenseNet121_32(dataset, normalized, num_classes, factor):
+    return DenseNet(Bottleneck, [6,12,24,16], growth_rate=32, dataset=dataset, normalized=normalized, num_classes=num_classes, factor=factor)
 
-def DenseNet169_32(num_classes, factor):
-    return DenseNet(Bottleneck, [6,12,32,32], growth_rate=32, num_classes=num_classes, factor=factor)
+def DenseNet169_32(dataset, normalized, num_classes, factor):
+    return DenseNet(Bottleneck, [6,12,32,32], growth_rate=32, dataset=dataset, normalized=normalized, num_classes=num_classes, factor=factor)
 
-def DenseNet201_32(num_classes, factor):
-    return DenseNet(Bottleneck, [6,12,48,32], growth_rate=32, num_classes=num_classes, factor=factor)
+def DenseNet201_32(dataset, normalized, num_classes, factor):
+    return DenseNet(Bottleneck, [6,12,48,32], growth_rate=32, dataset=dataset, normalized=normalized, num_classes=num_classes, factor=factor)
 
-def DenseNet161_48(num_classes, factor):
-    return DenseNet(Bottleneck, [6,12,36,24], growth_rate=48, num_classes=num_classes, factor=factor)
+def DenseNet161_48(dataset, normalized, num_classes, factor):
+    return DenseNet(Bottleneck, [6,12,36,24], growth_rate=48, dataset=dataset, normalized=normalized, num_classes=num_classes, factor=factor)
 
-def DenseNet121_12(num_classes, factor):
-    return DenseNet(Bottleneck, [6,12,24,16], growth_rate=12, num_classes=num_classes, factor=factor)
+def DenseNet121_12(dataset, normalized, num_classes, factor):
+    return DenseNet(Bottleneck, [6,12,24,16], growth_rate=12, dataset=dataset, normalized=normalized, num_classes=num_classes, factor=factor)
 
-def DenseNet201_12(num_classes, factor):
-    return DenseNet(Bottleneck, [6,12,48,32], growth_rate=12, num_classes=num_classes, factor=factor)
-
-def test():
-    net = DenseNet121_12()
-    x = torch.randn(1,3,32,32)
-    y = net(x)
-    print(y)
-
-# test()
+def DenseNet201_12(dataset, normalized, num_classes, factor):
+    return DenseNet(Bottleneck, [6,12,48,32], growth_rate=12, dataset=dataset, normalized=normalized, num_classes=num_classes, factor=factor)

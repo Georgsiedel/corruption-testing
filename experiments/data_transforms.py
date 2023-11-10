@@ -202,18 +202,6 @@ def apply_mixing_functions(inputs, targets, mixup_alpha, cutmix_alpha, num_class
         inputs, targets = mixupcutmix(inputs, targets)
     return inputs, targets
 
-def normalize(inputs, dataset):
-    if dataset == 'CIFAR10':
-        inputs = transforms.Normalize((0.4914, 0.4822, 0.4465), (0.247, 0.243, 0.261))(inputs)
-    elif dataset == 'CIFAR100':
-        inputs = transforms.Normalize((0.50707516, 0.48654887, 0.44091784), (0.26733429, 0.25643846, 0.27615047))(
-            inputs)
-    elif (dataset == 'ImageNet' or dataset == 'TinyImageNet'):
-        inputs = transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))(inputs)
-    else:
-        print('no normalization values set for this dataset')
-    return inputs
-
 def apply_augstrat(batch, train_aug_strat):
     batch = batch * 255.0
     batch = torch.clip(batch, 0.0, 255.0)

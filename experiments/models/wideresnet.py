@@ -7,6 +7,7 @@ import torch.nn as nn
 import torch.nn.init as init
 import torch.nn.functional as F
 import numpy as np
+from experiments.models import ct_model
 
 def conv3x3(in_planes, out_planes, stride=1):
     return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride, padding=1, bias=True)
@@ -72,11 +73,9 @@ class Bottleneck(nn.Module):
         out = F.relu(out)
         return out
 
-
-
-class WideResNet(nn.Module):
-    def __init__(self, depth, widen_factor, dropout_rate=0.3, num_classes=10, factor=1, block=WideBasic):
-        super(WideResNet, self).__init__()
+class WideResNet(ct_model.CtModel):
+    def __init__(self, depth, widen_factor, dataset, normalized, dropout_rate=0.3, num_classes=10, factor=1, block=WideBasic):
+        super(WideResNet, self).__init__(dataset=dataset, normalized=normalized)
         self.in_planes = 16
 
         assert ((depth-4)%6 ==0), 'Wide-resnet depth should be 6n+4'
@@ -102,7 +101,7 @@ class WideResNet(nn.Module):
 
         return nn.Sequential(*layers)
 
-    def forward(self, x):
+    def forward_ctmodel(self, x):
         out = self.conv1(x)
         out = self.layer1(out)
         out = self.layer2(out)
@@ -114,14 +113,14 @@ class WideResNet(nn.Module):
 
         return out
 
-def WideResNet_28_4(num_classes, factor, block=WideBasic, dropout_rate=0.3):
-    return WideResNet(depth=28, widen_factor=4, dropout_rate=dropout_rate, num_classes=num_classes, factor=factor, block=block)
+def WideResNet_28_4(num_classes, factor, dataset, normalized, block=WideBasic, dropout_rate=0.3):
+    return WideResNet(depth=28, widen_factor=4, dataset=dataset, normalized=normalized, dropout_rate=dropout_rate, num_classes=num_classes, factor=factor, block=block)
 
-def WideResNet_28_10(num_classes, factor, block=WideBasic, dropout_rate=0.3):
-    return WideResNet(depth=28, widen_factor=10, dropout_rate=dropout_rate, num_classes=num_classes, factor=factor, block=block)
+def WideResNet_28_10(num_classes, factor, dataset, normalized, block=WideBasic, dropout_rate=0.3):
+    return WideResNet(depth=28, widen_factor=10, dataset=dataset, normalized=normalized, dropout_rate=dropout_rate, num_classes=num_classes, factor=factor, block=block)
 
-def WideResNet_28_12(num_classes, factor, block=WideBasic, dropout_rate=0.3):
-    return WideResNet(depth=28, widen_factor=12, dropout_rate=dropout_rate, num_classes=num_classes, factor=factor, block=block)
+def WideResNet_28_12(num_classes, factor, dataset, normalized, block=WideBasic, dropout_rate=0.3):
+    return WideResNet(depth=28, widen_factor=12, dataset=dataset, normalized=normalized, dropout_rate=dropout_rate, num_classes=num_classes, factor=factor, block=block)
 
-def WideResNet_40_10(num_classes, factor, block=WideBasic, dropout_rate=0.3):
-    return WideResNet(depth=40, widen_factor=10, dropout_rate=dropout_rate, num_classes=num_classes, factor=factor, block=block)
+def WideResNet_40_10(num_classes, factor, dataset, normalized, block=WideBasic, dropout_rate=0.3):
+    return WideResNet(depth=40, widen_factor=10, dataset=dataset, normalized=normalized, dropout_rate=dropout_rate, num_classes=num_classes, factor=factor, block=block)
