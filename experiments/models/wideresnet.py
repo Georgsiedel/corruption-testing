@@ -74,7 +74,7 @@ class Bottleneck(nn.Module):
         return out
 
 class WideResNet(ct_model.CtModel):
-    def __init__(self, depth, widen_factor, dataset, normalized, dropout_rate=0.3, num_classes=10, factor=1, block=WideBasic):
+    def __init__(self, depth, widen_factor, dataset, normalized, dropout_rate=0.0, num_classes=10, factor=1, block=WideBasic):
         super(WideResNet, self).__init__(dataset=dataset, normalized=normalized)
         self.in_planes = 16
 
@@ -113,14 +113,14 @@ class WideResNet(ct_model.CtModel):
 
         return out
 
-def WideResNet_28_4(num_classes, factor, dataset, normalized, block=WideBasic, dropout_rate=0.3):
+def WideResNet_28_4(num_classes, factor, dataset, normalized, block=WideBasic, dropout_rate=0.0):
     return WideResNet(depth=28, widen_factor=4, dataset=dataset, normalized=normalized, dropout_rate=dropout_rate, num_classes=num_classes, factor=factor, block=block)
 
-def WideResNet_28_10(num_classes, factor, dataset, normalized, block=WideBasic, dropout_rate=0.3):
+def WideResNet_28_10(num_classes, factor, dataset, normalized, block=WideBasic, dropout_rate=0.0):
     return WideResNet(depth=28, widen_factor=10, dataset=dataset, normalized=normalized, dropout_rate=dropout_rate, num_classes=num_classes, factor=factor, block=block)
 
-def WideResNet_28_12(num_classes, factor, dataset, normalized, block=WideBasic, dropout_rate=0.3):
+def WideResNet_28_12(num_classes, factor, dataset, normalized, block=WideBasic, dropout_rate=0.0):
     return WideResNet(depth=28, widen_factor=12, dataset=dataset, normalized=normalized, dropout_rate=dropout_rate, num_classes=num_classes, factor=factor, block=block)
 
-def WideResNet_40_10(num_classes, factor, dataset, normalized, block=WideBasic, dropout_rate=0.3):
+def WideResNet_40_10(num_classes, factor, dataset, normalized, block=WideBasic, dropout_rate=0.0):
     return WideResNet(depth=40, widen_factor=10, dataset=dataset, normalized=normalized, dropout_rate=dropout_rate, num_classes=num_classes, factor=factor, block=block)

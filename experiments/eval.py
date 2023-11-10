@@ -217,9 +217,13 @@ def eval_metric(modelfilename, test_corruptions, combine_test_corruptions, test_
             print('No corrupted benchmark available other than CIFAR10-c, CIFAR100-c, TinyImageNet-c and ImageNet-c.')
 
         rmsce_c = np.average(np.asarray(rmsce_c_list))
-        print("Average Robust Accuracy (all 19 corruptions): ",sum(accs[2:21])/19,"%, Average Robust Accuracy (15 corruptions): ",sum(accs[2:17])/15,"%, RMSCE-C: ", rmsce_c)
+        print("Robust Accuracy all (19 corruptions): ",sum(accs[2:21])/19,"%, "
+              "Robust Accuracy original (15 corruptions): ",sum(accs[2:17])/15,"%, "
+              "Robust Accuracy ex noise (15 corruptions): ",(sum(accs[5:17]) + sum(accs[18:21])) / 15,"%, "
+              "RMSCE-C: ", rmsce_c)
         accs.append(sum(accs[2:21])/19)
         accs.append(sum(accs[2:17])/15)
+        accs.append((sum(accs[5:17]) + sum(accs[18:21])) / 15)
         accs.append(rmsce_c)
 
     if calculate_adv_distance == True:

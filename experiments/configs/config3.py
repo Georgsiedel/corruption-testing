@@ -2,7 +2,16 @@ import numpy as np
 import torchvision.models.mobilenet
 
 train_corruptions = np.array([
-#['standard', 0.0, False],
+['uniform-linf', 0.005, False],
+['uniform-linf', 0.01, False],
+['uniform-linf', 0.02, False],
+['uniform-linf', 0.03, False],
+['uniform-linf', 0.04, False],
+['uniform-linf', 0.06, False],
+['uniform-linf', 0.08, False],
+['uniform-linf', 0.1, False],
+['uniform-linf', 0.12, False],
+['uniform-linf', 0.15, False],
 ['uniform-l0.5', 25000.0, False],
 ['uniform-l0.5', 50000.0, False],
 ['uniform-l0.5', 75000.0, False],
@@ -13,16 +22,66 @@ train_corruptions = np.array([
 ['uniform-l0.5', 300000.0, False],
 ['uniform-l0.5', 350000.0, False],
 ['uniform-l0.5', 400000.0, False],
-['gaussian', 0.005, False],
-['gaussian', 0.01, False],
-['gaussian', 0.02, False],
-['gaussian', 0.03, False],
-['gaussian', 0.04, False],
-['gaussian', 0.05, False],
-['gaussian', 0.06, False],
-['gaussian', 0.08, False],
-['gaussian', 0.1, False],
-['gaussian', 0.12, False],
+['uniform-l1', 12.5, False],
+['uniform-l1', 25.0, False],
+['uniform-l1', 37.5, False],
+['uniform-l1', 50.0, False],
+['uniform-l1', 75.0, False],
+['uniform-l1', 100.0, False],
+['uniform-l1', 125.0, False],
+['uniform-l1', 150.0, False],
+['uniform-l1', 175.0, False],
+['uniform-l1', 200.0, False],
+['uniform-l2', 0.25, False],
+['uniform-l2', 0.5, False],
+['uniform-l2', 0.75, False],
+['uniform-l2', 1.0, False],
+['uniform-l2', 1.5, False],
+['uniform-l2', 2.0, False],
+['uniform-l2', 2.5, False],
+['uniform-l2', 3.0, False],
+['uniform-l2', 4.0, False],
+['uniform-l2', 5.0, False],
+['uniform-l5', 0.03, False],
+['uniform-l5', 0.06, False],
+['uniform-l5', 0.1, False],
+['uniform-l5', 0.15, False],
+['uniform-l5', 0.2, False],
+['uniform-l5', 0.25, False],
+['uniform-l5', 0.3, False],
+['uniform-l5', 0.4, False],
+['uniform-l5', 0.5, False],
+['uniform-l5', 0.6, False],
+['uniform-l10', 0.02, False],
+['uniform-l10', 0.03, False],
+['uniform-l10', 0.05, False],
+['uniform-l10', 0.07, False],
+['uniform-l10', 0.1, False],
+['uniform-l10', 0.13, False],
+['uniform-l10', 0.16, False],
+['uniform-l10', 0.2, False],
+['uniform-l10', 0.25, False],
+['uniform-l10', 0.3, False],
+['uniform-l50', 0.01, False],
+['uniform-l50', 0.02, False],
+['uniform-l50', 0.03, False],
+['uniform-l50', 0.04, False],
+['uniform-l50', 0.06, False],
+['uniform-l50', 0.08, False],
+['uniform-l50', 0.1, False],
+['uniform-l50', 0.12, False],
+['uniform-l50', 0.15, False],
+['uniform-l50', 0.18, False],
+['uniform-l200', 0.01, False],
+['uniform-l200', 0.02, False],
+['uniform-l200', 0.03, False],
+['uniform-l200', 0.04, False],
+['uniform-l200', 0.05, False],
+['uniform-l200', 0.07, False],
+['uniform-l200', 0.09, False],
+['uniform-l200', 0.11, False],
+['uniform-l200', 0.13, False],
+['uniform-l200', 0.15, False],
 ['uniform-l0-impulse', 0.005, True],
 ['uniform-l0-impulse', 0.01, True],
 ['uniform-l0-impulse', 0.015, True],
@@ -52,8 +111,8 @@ normalize = False
 validontest = True
 lrschedule = 'CosineAnnealingWarmRestarts'
 learningrate = 0.1
-epochs = 372
-lrparams = {'T_0': 12, 'T_mult': 2}
+epochs = 310
+lrparams = {'T_0': 10, 'T_mult': 2}
 warmupepochs = 0
 earlystop = False
 earlystopPatience = 15
@@ -64,7 +123,7 @@ modeltype = 'WideResNet_28_10'
 modelparams = {'dropout_rate': 0.1}
 resize = False
 aug_strat_check = True
-train_aug_strat = 'AugMix' #TrivialAugmentWide, RandAugment, AutoAugment, AugMix
+train_aug_strat = 'TrivialAugmentWide' #TrivialAugmentWide, RandAugment, AutoAugment, AugMix
 jsd_loss = False
 lossparams = {'num_splits': 3, 'alpha': 12, 'smoothing': 0.1}
 mixup_alpha = 0.2 #default 0.2 #If both mixup and cutmix are >0, mixup or cutmix are selected by 0.5 chance
@@ -197,7 +256,7 @@ autoattack_params = {'setsize': 1000, 'epsilon': 8/255, 'norm': 'Linf'}
 
 test_count = 2
 if test_on_c:
-    test_count += 22
+    test_count += 23
 if combine_test_corruptions:
     test_count += 1
 else:
