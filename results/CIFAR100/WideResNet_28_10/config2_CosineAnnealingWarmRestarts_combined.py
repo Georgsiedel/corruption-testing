@@ -12,6 +12,9 @@ train_corruptions = np.array([
 ['uniform-l0.5', 300000.0, False],
 ['uniform-l0.5', 350000.0, False],
 ['uniform-l0.5', 400000.0, False],
+['uniform-l0.5', 500000.0, False],
+['uniform-l0.5', 600000.0, False],
+['uniform-l0.5', 700000.0, False],
 ['gaussian', 0.005, False],
 ['gaussian', 0.01, False],
 ['gaussian', 0.015, False],
@@ -22,6 +25,9 @@ train_corruptions = np.array([
 ['gaussian', 0.05, False],
 ['gaussian', 0.06, False],
 ['gaussian', 0.07, False],
+['gaussian', 0.08, False],
+['gaussian', 0.1, False],
+['gaussian', 0.12, False],
 ['uniform-l0-impulse', 0.005, True],
 ['uniform-l0-impulse', 0.01, True],
 ['uniform-l0-impulse', 0.02, True],
@@ -31,7 +37,10 @@ train_corruptions = np.array([
 ['uniform-l0-impulse', 0.06, True],
 ['uniform-l0-impulse', 0.08, True],
 ['uniform-l0-impulse', 0.1, True],
-['uniform-l0-impulse', 0.12, True]
+['uniform-l0-impulse', 0.12, True],
+['uniform-l0-impulse', 0.14, True],
+['uniform-l0-impulse', 0.17, True],
+['uniform-l0-impulse', 0.2, True]
 ])
 
 batchsize = 384

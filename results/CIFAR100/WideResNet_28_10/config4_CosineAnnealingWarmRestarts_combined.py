@@ -2,16 +2,6 @@ import numpy as np
 import torchvision.models.mobilenet
 
 train_corruptions = np.array([
-['uniform-l0.5', 25000.0, False],
-['uniform-l0.5', 50000.0, False],
-['uniform-l0.5', 75000.0, False],
-['uniform-l0.5', 100000.0, False],
-['uniform-l0.5', 150000.0, False],
-['uniform-l0.5', 200000.0, False],
-['uniform-l0.5', 250000.0, False],
-['uniform-l0.5', 300000.0, False],
-['uniform-l0.5', 350000.0, False],
-['uniform-l0.5', 400000.0, False],
 ['gaussian', 0.005, False],
 ['gaussian', 0.01, False],
 ['gaussian', 0.015, False],
