@@ -61,6 +61,8 @@ def adv_distance(testloader, model, number_iterations, epsilon, eps_iter, norm, 
     return distance_list_1, image_idx_1, distance_list_2, image_idx_2, adv_acc
 
 def compute_adv_distance(testset, workers, model, adv_distance_params):
+    print(f"{adv_distance_params['norm']}-Adversarial Distance calculation using PGD attack with "
+          f"{adv_distance_params['nb_iters']} iterations of stepsize {adv_distance_params['eps_iter']}")
     truncated_testset, _ = torch.utils.data.random_split(testset,
                                                          [adv_distance_params["setsize"], len(testset)-adv_distance_params["setsize"]],
                                                          generator=torch.Generator().manual_seed(42))
@@ -75,7 +77,9 @@ def compute_adv_distance(testset, workers, model, adv_distance_params):
 
     return adv_acc*100, dst1, idx1, dst2, idx2
 
-def compute_adv_acc(autoattack_params, testset, model, workers, batchsize):
+def compute_adv_acc(autoattack_params, testset, model, workers, batchsize=50):
+    print(f"{autoattack_params['norm']} Adversarial Accuracy calculation using AutoAttack attack "
+          f"with epsilon={autoattack_params['epsilon']}")
     truncated_testset, _ = torch.utils.data.random_split(testset, [autoattack_params["setsize"],
                                 len(testset)-autoattack_params["setsize"]], generator=torch.Generator().manual_seed(42))
     truncated_testloader = DataLoader(truncated_testset, batch_size=autoattack_params["setsize"], shuffle=False,
@@ -88,10 +92,9 @@ def compute_adv_acc(autoattack_params, testset, model, workers, batchsize):
     else:
         autoattack_params["norm"] = autoattack_params["norm"][1:]
     for batch_id, (inputs, targets) in enumerate(truncated_testloader):
-        adv_inputs, adv_predicted = adversary.run_standard_evaluation(inputs, targets, bs=50, return_labels=True)
+        adv_inputs, adv_predicted = adversary.run_standard_evaluation(inputs, targets, bs=batchsize, return_labels=True)
 
         for i, (input) in enumerate(inputs):
-
             distance = torch.linalg.vector_norm((input - adv_inputs[i]), ord=autoattack_params["norm"])
             distance_list.append(distance)
 

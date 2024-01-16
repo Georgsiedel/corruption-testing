@@ -1,20 +1,10 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-import copy
-import random
+import numpy as np
 import torch
-import torch.cuda.amp
-import torchvision
-import torchvision.transforms as transforms
-import math
-from typing import Tuple
-from torch import Tensor
 from torchvision.transforms import functional as F
-
-from experiments.sample_lp_corruption import sample_lp_corr_img
-from experiments.sample_lp_corruption import sample_lp_corr_batch
+import torchvision
+import math
+from torch import Tensor
+from typing import Tuple
 
 class RandomMixup(torch.nn.Module):
     """Randomly apply Mixup to the provided batch and targets.
@@ -54,8 +44,8 @@ class RandomMixup(torch.nn.Module):
         Returns:
             Tensor: Randomly transformed batch.
         """
-        if batch.ndim != 4:
-            raise ValueError(f"Batch ndim should be 4. Got {batch.ndim}")
+        #if batch.ndim != 4:
+        #    raise ValueError(f"Batch ndim should be 4. Got {batch.ndim}")
         if target.ndim != 1:
             raise ValueError(f"Target ndim should be 1. Got {target.ndim}")
         if not batch.is_floating_point():
@@ -133,8 +123,8 @@ class RandomCutmix(torch.nn.Module):
         Returns:
             Tensor: Randomly transformed batch.
         """
-        if batch.ndim != 4:
-            raise ValueError(f"Batch ndim should be 4. Got {batch.ndim}")
+        #if batch.ndim != 4:
+        #    raise ValueError(f"Batch ndim should be 4. Got {batch.ndim}")
         if target.ndim != 1:
             raise ValueError(f"Target ndim should be 1. Got {target.ndim}")
         if not batch.is_floating_point():
@@ -191,76 +181,16 @@ class RandomCutmix(torch.nn.Module):
         )
         return s
 
-def apply_mixing_functions(inputs, targets, mixup_alpha, cutmix_alpha, num_classes):
+def mixup_process(inputs, targets, num_classes, cutmix_alpha, mixup_alpha, manifold):
     mixes = []
-    if mixup_alpha > 0.0:
-        mixes.append(RandomMixup(num_classes, p=1.0, alpha=mixup_alpha))
     if cutmix_alpha > 0.0:
         mixes.append(RandomCutmix(num_classes, p=1.0, alpha=cutmix_alpha))
+    elif mixup_alpha > 0.0:
+        mixes.append(RandomMixup(num_classes, p=1.0, alpha=mixup_alpha))
+    if manifold and mixup_alpha > 0.0:
+        mixes = []
+        mixes.append(RandomMixup(num_classes, p=1.0, alpha=mixup_alpha))
     if mixes:
         mixupcutmix = torchvision.transforms.RandomChoice(mixes)
         inputs, targets = mixupcutmix(inputs, targets)
     return inputs, targets
-
-def apply_augstrat(batch, train_aug_strat):
-    batch = batch * 255.0
-    batch = torch.clip(batch, 0.0, 255.0)
-    batch = batch.type(torch.uint8)
-    tf = getattr(transforms, train_aug_strat)
-    batch = tf()(batch)
-    batch = batch.type(torch.float32) / 255.0
-    return batch
-
-def apply_lp_corruption(batch, minibatchsize, combine_train_corruptions, train_corruptions, concurrent_combinations, max, noise, epsilon):
-
-    minibatches = batch.view(-1, minibatchsize, batch.size()[1], batch.size()[2], batch.size()[3])
-    epsilon = float(epsilon)
-        #for id, img in enumerate(batch):
-        #    corruptions_list = random.sample(list(train_corruptions), k=concurrent_combinations)
-        #    for x, (noise_type, train_epsilon, max) in enumerate(corruptions_list):
-        #        train_epsilon = float(train_epsilon)
-        #        img = sample_lp_corr_img(noise_type, train_epsilon, img, max)
-        #    batch[id] = img
-    for id, minibatch in enumerate(minibatches):
-        if combine_train_corruptions == True:
-            corruptions_list = random.sample(list(train_corruptions), k=concurrent_combinations)
-            for x, (noise_type, train_epsilon, max) in enumerate(corruptions_list):
-                train_epsilon = float(train_epsilon)
-                minibatch = sample_lp_corr_batch(noise_type, train_epsilon, minibatch, max)
-            minibatches[id] = minibatch
-        else:
-            minibatch = sample_lp_corr_batch(noise, epsilon, minibatch, max)
-            minibatches[id] = minibatch
-    batch = minibatches.view(-1, batch.size()[1], batch.size()[2], batch.size()[3])
-
-    return batch
-
-def create_transforms(dataset, train_aug_strat, RandomEraseProbability):
-    # list of all data transformations used
-    t = transforms.ToTensor()
-    c32 = transforms.RandomCrop(32, padding=4)
-    c64 = transforms.RandomCrop(64, padding=8)
-    flip = transforms.RandomHorizontalFlip()
-    r256 = transforms.Resize(256, antialias=True)
-    c224 = transforms.CenterCrop(224)
-    rrc224 = transforms.RandomResizedCrop(224, antialias=True)
-    re = transforms.RandomErasing(p=RandomEraseProbability)
-    #tf = getattr(transforms, train_aug_strat)
-
-    # transformations of validation set
-    transforms_valid = transforms.Compose([t])
-    if dataset == 'CIFAR10' or dataset == 'CIFAR100' or dataset == 'TinyImageNet':
-        transforms_valid = transforms.Compose([transforms_valid])
-    elif dataset == 'ImageNet':
-        transforms_valid = transforms.Compose([transforms_valid, r256, c224])
-
-    # transformations of training set
-    transforms_train = transforms.Compose([flip, t, re])
-    if dataset == 'CIFAR10' or dataset == 'CIFAR100':
-        transforms_train = transforms.Compose([transforms_train, c32])
-    elif dataset == 'TinyImageNet':
-        transforms_train = transforms.Compose([transforms_train, c64])
-    elif dataset == 'ImageNet':
-        transforms_train = transforms.Compose([transforms_train, rrc224])
-
-    return transforms_train, transforms_valid

@@ -2,6 +2,16 @@ import numpy as np
 import torchvision.models.mobilenet
 
 train_corruptions = np.array([
+['uniform-l0.5', 25000.0, False],
+['uniform-l0.5', 50000.0, False],
+['uniform-l0.5', 75000.0, False],
+['uniform-l0.5', 100000.0, False],
+['uniform-l0.5', 150000.0, False],
+['uniform-l0.5', 200000.0, False],
+['uniform-l0.5', 250000.0, False],
+['uniform-l0.5', 300000.0, False],
+['uniform-l0.5', 350000.0, False],
+['uniform-l0.5', 400000.0, False],
 ['gaussian', 0.005, False],
 ['gaussian', 0.01, False],
 ['gaussian', 0.015, False],
@@ -58,6 +68,7 @@ jsd_loss = False
 lossparams = {'num_splits': 3, 'alpha': 12, 'smoothing': 0.1}
 mixup_alpha = 0.2 #default 0.2 #If both mixup and cutmix are >0, mixup or cutmix are selected by 0.5 chance
 cutmix_alpha = 1.0 # default 1.0 #If both mixup and cutmix are >0, mixup or cutmix are selected by 0.5 chance
+mixup_manifold = True
 RandomEraseProbability = 0.1
 
 combine_train_corruptions = True #augment the train dataset with all corruptions

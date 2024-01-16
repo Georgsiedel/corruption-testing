@@ -2,25 +2,11 @@
 import numpy as np
 import torch
 
-def save_model(epoch, model, optimizer, scheduler, path):
-    torch.save({
-        'epoch': epoch,
-        'model_state_dict': model.state_dict(),
-        'optimizer_state_dict': optimizer.state_dict(),
-        'scheduler_state_dict': scheduler.state_dict(),
-    }, path)
-
-def load_model(model, optimizer, scheduler, path):
-    checkpoint = torch.load(path)
-    model.load_state_dict(checkpoint['model_state_dict'])
-    optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-    scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
-    start_epoch = checkpoint['epoch'] + 1
-    return start_epoch, model, optimizer, scheduler
-
-class EarlyStopping:
+class Checkpoint:
     """Early stops the training if validation loss doesn't improve after a given patience."""
-    def __init__(self, patience=7, verbose=False, delta=0, trace_func=print):
+    def __init__(self, earlystopping = False, patience=7, verbose=False, delta=0, trace_func=print,
+                 model_path= 'experiments/trained_models/checkpoint.pt',
+                 best_model_path = 'experiments/trained_models/best_checkpoint.pt'):
         """
         Args:
             patience (int): How long to wait after last time validation loss improved.
@@ -41,7 +27,11 @@ class EarlyStopping:
         self.val_loss_min = 1000 #placeholder initial value
         self.delta = delta
         self.trace_func = trace_func
-    def __call__(self, val_acc, model):
+        self.earlystopping = earlystopping
+        self.model_path = model_path
+        self.best_model_path = best_model_path
+
+    def _earlystopping(self, val_acc, model):
 
         score = val_acc
 
@@ -52,10 +42,49 @@ class EarlyStopping:
             self.best_model = False
             if self.verbose:
                 self.trace_func(f'EarlyStopping counter: {self.counter} out of {self.patience}')
-            if self.counter >= self.patience:
+            if self.counter >= self.patience and self.earlystopping == True:
                 self.early_stop = True
+                print("Early stopping")
         else:
             self.best_score = score
             self.counter = 0
             self.best_model = True
+
+    def _load_model(self, model, optimizer, scheduler, best=False):
+        checkpoint = torch.load(self.best_model_path) if best == True else torch.load(self.model_path)
+
+        model.load_state_dict(checkpoint['model_state_dict'])
+        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+        start_epoch = checkpoint['epoch'] + 1
+        return start_epoch, model, optimizer, scheduler
+
+    def _save_checkpoint(self, model, optimizer, scheduler, epoch):
+
+        torch.save({
+            'epoch': epoch,
+            'model_state_dict': model.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
+            'scheduler_state_dict': scheduler.state_dict(),
+        }, self.model_path)
+
+        if self.best_model == True:
+            torch.save({
+                'epoch': epoch,
+                'model_state_dict': model.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                'scheduler_state_dict': scheduler.state_dict(),
+            }, self.best_model_path)
+
+    def _save_final_model(self, model, optimizer, scheduler, epoch, path):
+        torch.save({
+            'epoch': epoch,
+            'model_state_dict': model.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
+            'scheduler_state_dict': scheduler.state_dict(),
+        }, path)
+
+
+
+
 

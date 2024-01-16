@@ -1,39 +1,58 @@
-import math
-
+import copy
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
+import numpy as np
+from experiments.mixup import mixup_process
+from experiments.noise import apply_lp_corruption
+from experiments.data import normalization_values
 
 class CtModel(nn.Module):
 
-    def __init__(self, dataset, normalized):
+    def __init__(self, dataset, normalized, num_classes, mixup_alpha, mixup_manifold, cutmix_alpha,
+                 noise_minibatchsize, corruptions, concurrent_combinations):
         super(CtModel, self).__init__()
         self.normalized = normalized
-
+        self.mixup_alpha = mixup_alpha
+        self.mixup_manifold = mixup_manifold
+        self.cutmix_alpha = cutmix_alpha
+        self.num_classes = num_classes
+        self.noise_minibatchsize = noise_minibatchsize
+        self.corruptions = corruptions
+        self.concurrent_combinations = concurrent_combinations
+        self.dataset = dataset
         if normalized:
-            mean, std = self._normalize(dataset)
+            mean, std = normalization_values(dataset)
             self.register_buffer('mu', mean)
             self.register_buffer('sigma', std)
 
-    def _normalize(self, dataset):
-        if dataset == 'CIFAR10':
-            mean = torch.tensor([0.4914, 0.4822, 0.4465]).view(1, 3, 1, 1)
-            std = torch.tensor([0.247, 0.243, 0.261]).view(1, 3, 1, 1)
-        elif dataset == 'CIFAR100':
-            mean = torch.tensor([0.50707516, 0.48654887, 0.44091784]).view(1, 3, 1, 1)
-            std = torch.tensor([0.26733429, 0.25643846, 0.27615047]).view(1, 3, 1, 1)
-        elif (dataset == 'ImageNet' or dataset == 'TinyImageNet'):
-            mean = torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1)
-            std = torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1)
-        else:
-            print('no normalization values set for this dataset')
-
-        return mean, std
-
-    def forward(self, x):
+    def forward_normalize(self, x):
         if self.normalized:
             x = (x - self.mu) / self.sigma
-        return self.forward_ctmodel(x)
+        return x
 
-    def forward_ctmodel(self, x):
-        return None
+    def forward_noise_mixup(self, out, targets):
+
+        #define where mixup is applied. k=0 is in the input space, k>0 is in the embedding space (manifold mixup)
+        if self.training == False: k = -2
+        elif self.mixup_alpha > 0.0 and self.mixup_manifold == True: k = np.random.choice(range(3), 1)[0]
+        elif self.mixup_alpha > 0.0 or self.cutmix_alpha > 0.0: k = 0
+        else: k = -1
+        #out_double = copy.deepcopy(out)
+        if k == -1:
+            out = apply_lp_corruption(out, self.noise_minibatchsize, self.corruptions, self.concurrent_combinations, self.normalized, self.dataset)
+        #print(torch.equal(out, out_double))
+        if k == 0:  # Do input mixup if k is 0
+            out, targets = mixup_process(out, targets, self.num_classes, self.cutmix_alpha, self.mixup_alpha, manifold=False)
+            out = apply_lp_corruption(out, self.noise_minibatchsize, self.corruptions, self.concurrent_combinations, self.normalized, self.dataset)
+        out = self.blocks[0](out)
+
+        for i, ResidualBlock in enumerate(self.blocks[1:]):
+            out = ResidualBlock(out)
+            #print(out.max(), out.min(), out.mean(), out.std())
+            if k == (i + 1):  # Do manifold mixup if k is greater 0
+                with torch.no_grad():
+                    out, targets = mixup_process(out, targets, self.num_classes, self.cutmix_alpha, self.mixup_alpha, manifold=True)
+                    out = apply_lp_corruption(out, self.noise_minibatchsize, self.corruptions, self.concurrent_combinations, self.normalized, self.dataset)
+
+        return out, targets
+

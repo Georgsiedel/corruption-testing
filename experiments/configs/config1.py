@@ -2,58 +2,134 @@ import numpy as np
 import torchvision.models.mobilenet
 
 train_corruptions = np.array([
-['uniform-l0.5', 25000.0, False],
-['uniform-l0.5', 50000.0, False],
-['uniform-l0.5', 75000.0, False],
-['uniform-l0.5', 100000.0, False],
-['uniform-l0.5', 150000.0, False],
-['gaussian', 0.005, False],
-['gaussian', 0.01, False],
-['gaussian', 0.015, False],
-['gaussian', 0.02, False],
-['gaussian', 0.025, False],
-['uniform-l0-impulse', 0.005, True],
-['uniform-l0-impulse', 0.01, True],
-['uniform-l0-impulse', 0.02, True],
-['uniform-l0-impulse', 0.03, True],
-['uniform-l0-impulse', 0.04, True],
+{'noise_type': 'uniform-l0-impulse', 'epsilon': 0.01, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l0-impulse', 'epsilon': 0.02, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l0-impulse', 'epsilon': 0.03, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l0-impulse', 'epsilon': 0.04, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l0-impulse', 'epsilon': 0.05, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l0-impulse', 'epsilon': 0.07, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l0-impulse', 'epsilon': 0.09, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l0-impulse', 'epsilon': 0.11, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l0-impulse', 'epsilon': 0.13, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l0-impulse', 'epsilon': 0.15, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l0-impulse', 'epsilon': 0.005, 'sphere': True, 'distribution': 'max'},
+{'noise_type': 'uniform-l0-impulse', 'epsilon': 0.01, 'sphere': True, 'distribution': 'max'},
+{'noise_type': 'uniform-l0-impulse', 'epsilon': 0.015, 'sphere': True, 'distribution': 'max'},
+{'noise_type': 'uniform-l0-impulse', 'epsilon': 0.02, 'sphere': True, 'distribution': 'max'},
+{'noise_type': 'uniform-l0-impulse', 'epsilon': 0.03, 'sphere': True, 'distribution': 'max'},
+{'noise_type': 'uniform-l0-impulse', 'epsilon': 0.04, 'sphere': True, 'distribution': 'max'},
+{'noise_type': 'uniform-l0-impulse', 'epsilon': 0.06, 'sphere': True, 'distribution': 'max'},
+{'noise_type': 'uniform-l0-impulse', 'epsilon': 0.08, 'sphere': True, 'distribution': 'max'},
+{'noise_type': 'uniform-l0-impulse', 'epsilon': 0.1, 'sphere': True, 'distribution': 'max'},
+{'noise_type': 'uniform-l0-impulse', 'epsilon': 0.12, 'sphere': True, 'distribution': 'max'},
+{'noise_type': 'uniform-l0.5', 'epsilon': 25000.0, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l0.5', 'epsilon': 50000.0, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l0.5', 'epsilon': 75000.0, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l0.5', 'epsilon': 100000.0, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l0.5', 'epsilon': 150000.0, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l0.5', 'epsilon': 200000.0, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l0.5', 'epsilon': 250000.0, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l0.5', 'epsilon': 300000.0, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l0.5', 'epsilon': 350000.0, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l0.5', 'epsilon': 400000.0, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l1', 'epsilon': 12.5, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l1', 'epsilon': 25.0, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l1', 'epsilon': 37.5, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l1', 'epsilon': 50.0, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l1', 'epsilon': 75.0, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l1', 'epsilon': 100.0, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l1', 'epsilon': 125.0, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l1', 'epsilon': 150.0, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l1', 'epsilon': 175.0, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l1', 'epsilon': 200.0, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l2', 'epsilon': 0.25, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l2', 'epsilon': 0.5, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l2', 'epsilon': 0.75, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l2', 'epsilon': 1.0, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l2', 'epsilon': 1.5, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l2', 'epsilon': 2.0, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l2', 'epsilon': 2.5, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l2', 'epsilon': 3.0, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l2', 'epsilon': 4.0, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l2', 'epsilon': 5.0, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l5', 'epsilon': 0.03, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l5', 'epsilon': 0.06, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l5', 'epsilon': 0.1, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l5', 'epsilon': 0.15, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l5', 'epsilon': 0.2, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l5', 'epsilon': 0.25, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l5', 'epsilon': 0.3, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l5', 'epsilon': 0.4, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l5', 'epsilon': 0.5, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l5', 'epsilon': 0.6, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l10', 'epsilon': 0.02, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l10', 'epsilon': 0.03, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l10', 'epsilon': 0.05, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l10', 'epsilon': 0.07, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l10', 'epsilon': 0.1, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l10', 'epsilon': 0.13, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l10', 'epsilon': 0.16, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l10', 'epsilon': 0.2, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l10', 'epsilon': 0.25, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l10', 'epsilon': 0.3, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l50', 'epsilon': 0.01, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l50', 'epsilon': 0.02, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l50', 'epsilon': 0.03, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l50', 'epsilon': 0.04, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l50', 'epsilon': 0.06, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l50', 'epsilon': 0.08, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l50', 'epsilon': 0.1, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l50', 'epsilon': 0.12, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l50', 'epsilon': 0.15, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l50', 'epsilon': 0.18, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l200', 'epsilon': 0.01, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l200', 'epsilon': 0.02, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l200', 'epsilon': 0.03, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l200', 'epsilon': 0.04, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l200', 'epsilon': 0.05, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l200', 'epsilon': 0.07, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l200', 'epsilon': 0.09, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l200', 'epsilon': 0.11, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l200', 'epsilon': 0.13, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l200', 'epsilon': 0.15, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-linf', 'epsilon': 0.005, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-linf', 'epsilon': 0.01, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-linf', 'epsilon': 0.02, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-linf', 'epsilon': 0.03, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-linf', 'epsilon': 0.04, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-linf', 'epsilon': 0.06, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-linf', 'epsilon': 0.08, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-linf', 'epsilon': 0.1, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-linf', 'epsilon': 0.12, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-linf', 'epsilon': 0.15, 'sphere': False, 'distribution': 'max'},
 ])
 
-batchsize = 384
-dataset = 'CIFAR100' #ImageNet #CIFAR100 #TinyImageNet
-if dataset == 'CIFAR10':
-    num_classes = 10
-    pixel_factor = 1
-elif dataset == 'CIFAR100':
-    num_classes = 100
-    pixel_factor = 1
-elif dataset == 'ImageNet':
-    num_classes = 1000
-elif dataset == 'TinyImageNet':
-    num_classes = 200
-    pixel_factor = 2
-normalize = False
+batchsize = 512
+minibatchsize = 8
+dataset = 'CIFAR10' #ImageNet #CIFAR100 #TinyImageNet
+normalize = True
 validontest = True
 lrschedule = 'CosineAnnealingWarmRestarts'
-learningrate = 0.1
+learningrate = 0.15
 epochs = 310
 lrparams = {'T_0': 10, 'T_mult': 2}
 warmupepochs = 0
 earlystop = False
 earlystopPatience = 15
 optimizer = 'SGD'
-optimizerparams = {'momentum': 0.9, 'weight_decay': 2e-5}
+optimizerparams = {'momentum': 0.9, 'weight_decay': 1e-4}
 number_workers = 1
-modeltype = 'WideResNet_28_10'
-modelparams = {'dropout_rate': 0.1}
+modeltype = 'WideResNet_28_2'
+modelparams = {'dropout_rate': 0.3}
 resize = False
 aug_strat_check = True
 train_aug_strat = 'TrivialAugmentWide' #TrivialAugmentWide, RandAugment, AutoAugment, AugMix
 jsd_loss = False
-lossparams = {'num_splits': 3, 'alpha': 12, 'smoothing': 0.1}
-mixup_alpha = 0.2 #default 0.2 #If both mixup and cutmix are >0, mixup or cutmix are selected by 0.5 chance
-cutmix_alpha = 1.0 # default 1.0 #If both mixup and cutmix are >0, mixup or cutmix are selected by 0.5 chance
-RandomEraseProbability = 0.1
+lossparams = {'num_splits': 3, 'alpha': 12, 'smoothing': 0.0}
+mixup_alpha = 0.0 #default 0.2 #If both mixup and cutmix are >0, mixup or cutmix are selected by 0.5 chance
+cutmix_alpha = 0.0 # default 1.0 #If both mixup and cutmix are >0, mixup or cutmix are selected by 0.5 chance
+mixup_manifold = False
+RandomEraseProbability = 0.0
 
 combine_train_corruptions = True #augment the train dataset with all corruptions
 concurrent_combinations = 1 #only has an effect if combine_train_corruption is True
@@ -70,107 +146,96 @@ else:
 #define intensity (second column): max.-distance of random perturbations for model training and evaluation (gaussian: std-dev; l0: proportion of pixels corrupted; lp: epsilon)
 #define whether density_distribution=max (third column) is True (sample only maximum intensity values) or False (uniformly distributed up to maximum intensity)
 test_corruptions = np.array([
-['standard', 0.0, False],
-['uniform-linf', 0.01, False],
-['uniform-linf', 0.02, False],
-['uniform-linf', 0.03, False],
-['uniform-linf', 0.04, False],
-['uniform-linf', 0.06, False],
-['uniform-linf', 0.08, False],
-['uniform-linf', 0.1, False],
-['uniform-linf', 0.12, False],
-['uniform-linf', 0.14, False],
-['uniform-linf', 0.16, False],
-['gaussian', 0.005, False],
-['gaussian', 0.01, False],
-['gaussian', 0.02, False],
-['gaussian', 0.03, False],
-['gaussian', 0.04, False],
-['gaussian', 0.05, False],
-['gaussian', 0.06, False],
-['gaussian', 0.08, False],
-['gaussian', 0.1, False],
-['gaussian', 0.12, False],
-['uniform-l0.5', 25000.0, False],
-['uniform-l0.5', 50000.0, False],
-['uniform-l0.5', 75000.0, False],
-['uniform-l0.5', 100000.0, False],
-['uniform-l0.5', 150000.0, False],
-['uniform-l0.5', 200000.0, False],
-['uniform-l0.5', 250000.0, False],
-['uniform-l0.5', 300000.0, False],
-['uniform-l0.5', 350000.0, False],
-['uniform-l0.5', 400000.0, False],
-['uniform-l1', 12.5, False],
-['uniform-l1', 25.0, False],
-['uniform-l1', 37.5, False],
-['uniform-l1', 50.0, False],
-['uniform-l1', 75.0, False],
-['uniform-l1', 100.0, False],
-['uniform-l1', 125.0, False],
-['uniform-l1', 150.0, False],
-['uniform-l1', 175.0, False],
-['uniform-l1', 200.0, False],
-['uniform-l2', 0.25, False],
-['uniform-l2', 0.5, False],
-['uniform-l2', 0.75, False],
-['uniform-l2', 1.0, False],
-['uniform-l2', 1.5, False],
-['uniform-l2', 2.0, False],
-['uniform-l2', 2.5, False],
-['uniform-l2', 3.0, False],
-['uniform-l2', 3.5, False],
-['uniform-l2', 4.0, False],
-['uniform-l5', 0.05, False],
-['uniform-l5', 0.1, False],
-['uniform-l5', 0.15, False],
-['uniform-l5', 0.2, False],
-['uniform-l5', 0.3, False],
-['uniform-l5', 0.4, False],
-['uniform-l5', 0.5, False],
-['uniform-l5', 0.6, False],
-['uniform-l5', 0.7, False],
-['uniform-l5', 0.8, False],
-['uniform-l10', 0.03, False],
-['uniform-l10', 0.06, False],
-['uniform-l10', 0.09, False],
-['uniform-l10', 0.12, False],
-['uniform-l10', 0.18, False],
-['uniform-l10', 0.24, False],
-['uniform-l10', 0.3, False],
-['uniform-l10', 0.36, False],
-['uniform-l10', 0.42, False],
-['uniform-l10', 0.48, False],
-['uniform-l50', 0.025, False],
-['uniform-l50', 0.05, False],
-['uniform-l50', 0.075, False],
-['uniform-l50', 0.1, False],
-['uniform-l50', 0.15, False],
-['uniform-l50', 0.2, False],
-['uniform-l50', 0.25, False],
-['uniform-l50', 0.3, False],
-['uniform-l50', 0.35, False],
-['uniform-l50', 0.4, False],
-['uniform-l200', 0.025, False],
-['uniform-l200', 0.05, False],
-['uniform-l200', 0.075, False],
-['uniform-l200', 0.1, False],
-['uniform-l200', 0.15, False],
-['uniform-l200', 0.2, False],
-['uniform-l200', 0.25, False],
-['uniform-l200', 0.3, False],
-['uniform-l200', 0.35, False],
-['uniform-l200', 0.4, False],
-['uniform-l0-impulse', 0.005, True],
-['uniform-l0-impulse', 0.01, True],
-['uniform-l0-impulse', 0.015, True],
-['uniform-l0-impulse', 0.02, True],
-['uniform-l0-impulse', 0.03, True],
-['uniform-l0-impulse', 0.04, True],
-['uniform-l0-impulse', 0.06, True],
-['uniform-l0-impulse', 0.08, True],
-['uniform-l0-impulse', 0.1, True],
-['uniform-l0-impulse', 0.12, True]
+{'noise_type': 'uniform-l0-impulse', 'epsilon': 0.005, 'sphere': True, 'distribution': 'max'},
+{'noise_type': 'uniform-l0-impulse', 'epsilon': 0.01, 'sphere': True, 'distribution': 'max'},
+{'noise_type': 'uniform-l0-impulse', 'epsilon': 0.015, 'sphere': True, 'distribution': 'max'},
+{'noise_type': 'uniform-l0-impulse', 'epsilon': 0.02, 'sphere': True, 'distribution': 'max'},
+{'noise_type': 'uniform-l0-impulse', 'epsilon': 0.03, 'sphere': True, 'distribution': 'max'},
+{'noise_type': 'uniform-l0-impulse', 'epsilon': 0.04, 'sphere': True, 'distribution': 'max'},
+{'noise_type': 'uniform-l0-impulse', 'epsilon': 0.06, 'sphere': True, 'distribution': 'max'},
+{'noise_type': 'uniform-l0-impulse', 'epsilon': 0.08, 'sphere': True, 'distribution': 'max'},
+{'noise_type': 'uniform-l0-impulse', 'epsilon': 0.1, 'sphere': True, 'distribution': 'max'},
+{'noise_type': 'uniform-l0-impulse', 'epsilon': 0.12, 'sphere': True, 'distribution': 'max'},
+{'noise_type': 'uniform-l0.5', 'epsilon': 25000.0, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l0.5', 'epsilon': 50000.0, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l0.5', 'epsilon': 75000.0, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l0.5', 'epsilon': 100000.0, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l0.5', 'epsilon': 150000.0, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l0.5', 'epsilon': 200000.0, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l0.5', 'epsilon': 250000.0, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l0.5', 'epsilon': 300000.0, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l0.5', 'epsilon': 350000.0, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l0.5', 'epsilon': 400000.0, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l1', 'epsilon': 12.5, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l1', 'epsilon': 25.0, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l1', 'epsilon': 37.5, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l1', 'epsilon': 50.0, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l1', 'epsilon': 75.0, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l1', 'epsilon': 100.0, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l1', 'epsilon': 125.0, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l1', 'epsilon': 150.0, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l1', 'epsilon': 175.0, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l1', 'epsilon': 200.0, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l2', 'epsilon': 0.25, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l2', 'epsilon': 0.5, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l2', 'epsilon': 0.75, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l2', 'epsilon': 1.0, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l2', 'epsilon': 1.5, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l2', 'epsilon': 2.0, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l2', 'epsilon': 2.5, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l2', 'epsilon': 3.0, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l2', 'epsilon': 4.0, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l2', 'epsilon': 5.0, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l5', 'epsilon': 0.03, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l5', 'epsilon': 0.06, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l5', 'epsilon': 0.1, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l5', 'epsilon': 0.15, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l5', 'epsilon': 0.2, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l5', 'epsilon': 0.25, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l5', 'epsilon': 0.3, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l5', 'epsilon': 0.4, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l5', 'epsilon': 0.5, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l5', 'epsilon': 0.6, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l10', 'epsilon': 0.02, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l10', 'epsilon': 0.03, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l10', 'epsilon': 0.05, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l10', 'epsilon': 0.07, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l10', 'epsilon': 0.1, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l10', 'epsilon': 0.13, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l10', 'epsilon': 0.16, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l10', 'epsilon': 0.2, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l10', 'epsilon': 0.25, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l10', 'epsilon': 0.3, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l50', 'epsilon': 0.01, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l50', 'epsilon': 0.02, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l50', 'epsilon': 0.03, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l50', 'epsilon': 0.04, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l50', 'epsilon': 0.06, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l50', 'epsilon': 0.08, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l50', 'epsilon': 0.1, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l50', 'epsilon': 0.12, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l50', 'epsilon': 0.15, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l50', 'epsilon': 0.18, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l200', 'epsilon': 0.01, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l200', 'epsilon': 0.02, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l200', 'epsilon': 0.03, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l200', 'epsilon': 0.04, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l200', 'epsilon': 0.05, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l200', 'epsilon': 0.07, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l200', 'epsilon': 0.09, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l200', 'epsilon': 0.11, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l200', 'epsilon': 0.13, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-l200', 'epsilon': 0.15, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-linf', 'epsilon': 0.005, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-linf', 'epsilon': 0.01, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-linf', 'epsilon': 0.02, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-linf', 'epsilon': 0.03, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-linf', 'epsilon': 0.04, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-linf', 'epsilon': 0.06, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-linf', 'epsilon': 0.08, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-linf', 'epsilon': 0.1, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-linf', 'epsilon': 0.12, 'sphere': False, 'distribution': 'max'},
+{'noise_type': 'uniform-linf', 'epsilon': 0.15, 'sphere': False, 'distribution': 'max'},
 ])
 test_on_c = True
 combine_test_corruptions = False #augment the test dataset with all corruptions
@@ -190,3 +255,15 @@ if calculate_adv_distance:
     test_count += 3
 if calculate_autoattack_robustness:
     test_count += 2
+
+if dataset == 'CIFAR10':
+    num_classes = 10
+    pixel_factor = 1
+elif dataset == 'CIFAR100':
+    num_classes = 100
+    pixel_factor = 1
+elif dataset == 'ImageNet':
+    num_classes = 1000
+elif dataset == 'TinyImageNet':
+    num_classes = 200
+    pixel_factor = 2

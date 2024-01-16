@@ -2,26 +2,41 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
+def calculate_steps(dataset, batchsize, epochs, warmupepochs, validontest):
+    #+0.5 is a way of rounding up to account for the last partial batch in every epoch
+    if dataset == 'ImageNet':
+        steps = round(1281167/batchsize + 0.5) * (epochs + warmupepochs)
+        if validontest == True:
+            steps += (round(50000/batchsize + 0.5) * (epochs + warmupepochs))
+    if dataset == 'TinyImageNet':
+        steps = round(100000/batchsize + 0.5) * (epochs + warmupepochs)
+        if validontest == True:
+            steps += (round(10000/batchsize + 0.5) * (epochs + warmupepochs))
+    elif dataset == 'CIFAR10' or dataset == 'CIFAR100':
+        steps = round(50000 / batchsize + 0.5) * (epochs + warmupepochs)
+        if validontest == True:
+            steps += (round(10000/batchsize + 0.5) * (epochs + warmupepochs))
+    total_steps = int(steps)
+    return total_steps
+
 def create_report(avg_test_metrics, max_test_metrics, std_test_metrics, train_corruptions, test_corruptions,
                 combine_train_corruptions, combine_test_corruptions, dataset, modeltype, lrschedule, experiment,
-                  test_on_c, calculate_adv_distance, calculate_autoattack_robustness, runs):
+                test_on_c, calculate_adv_distance, calculate_autoattack_robustness, runs):
 
     training_folder = 'combined' if combine_train_corruptions == True else 'separate'
 
     if combine_train_corruptions == True:
         train_corruptions_string = ['config_model']
     else:
-        train_corruptions_string = train_corruptions.astype(str)
-        train_corruptions_string = np.array([','.join(row) for row in train_corruptions_string])
+        train_corruptions_string = np.array([','.join(map(str, row.values())) for row in train_corruptions])
 
     test_corruptions_string = np.array(['Standard_Acc', 'RMSCE'])
     if test_on_c == True:
         test_corruptions_label = np.loadtxt('./experiments/data/c-labels.txt', dtype=list)
         test_corruptions_string = np.append(test_corruptions_string, test_corruptions_label, axis=0)
-        test_corruptions_string = np.append(test_corruptions_string, ['mCE-19'], axis=0)
-        test_corruptions_string = np.append(test_corruptions_string, ['mCE-15'], axis=0)
-        test_corruptions_string = np.append(test_corruptions_string, ['mCE-19_exNoise'], axis=0)
-        test_corruptions_string = np.append(test_corruptions_string, ['RMSCE_C'], axis=0)
+        test_corruptions_string = np.append(test_corruptions_string, ['mCE-19', 'mCE-15', 'mCE-19_exNoise', 'RMSCE_C'],
+                                            axis=0)
+
     if calculate_adv_distance == True:
         test_corruptions_string = np.append(test_corruptions_string, ['Acc_from_PGD_adv_distance_calculation',
                                                                       'Mean_adv_distance_with_misclassified_images_0)',
@@ -32,11 +47,9 @@ def create_report(avg_test_metrics, max_test_metrics, std_test_metrics, train_co
                                             ['Adversarial_accuracy_autoattack', 'Mean_adv_distance_autoattack)'],
                                             axis=0)
     if combine_test_corruptions == True:
-        test_corruptions_label = ['Acc_config']
-        test_corruptions_string = np.append(test_corruptions_string, test_corruptions_label)
+        test_corruptions_string = np.append(test_corruptions_string, ['Combined Noise'])
     else:
-        test_corruptions_labels = test_corruptions.astype(str)
-        test_corruptions_labels = np.array([','.join(row) for row in test_corruptions_labels])
+        test_corruptions_labels = np.array([','.join(map(str, row.values())) for row in test_corruptions])
         test_corruptions_string = np.append(test_corruptions_string, test_corruptions_labels)
 
     avg_report_frame = pd.DataFrame(avg_test_metrics, index=test_corruptions_string, columns=train_corruptions_string)
@@ -53,13 +66,14 @@ def create_report(avg_test_metrics, max_test_metrics, std_test_metrics, train_co
                                 f'metrics_test_std.csv', index=True, header=True,
                                 sep=';', float_format='%1.4f', decimal=',')
 
-def learning_curves(dataset, modeltype, lrschedule, experiment, run, train_accs, valid_accs,
+def save_learning_curves(dataset, modeltype, lrschedule, experiment, run, train_accs, valid_accs,
                     train_losses, valid_losses, training_folder, filename_spec):
+
 
     learning_curve_frame = pd.DataFrame({"train_accuracy": train_accs, "train_loss": train_losses,
                                          "valid_accuracy": valid_accs, "valid_loss": valid_losses})
-
     x = list(range(1, len(train_accs) + 1))
+    plt.figure()
     plt.plot(x, train_accs, label='Train Accuracy')
     plt.plot(x, valid_accs, label='Validation Accuracy')
     plt.title('Training and Validation Accuracy')
@@ -73,4 +87,14 @@ def learning_curves(dataset, modeltype, lrschedule, experiment, run, train_accs,
                                 index=False, header=True, sep=';', float_format='%1.4f', decimal=',')
     plt.savefig(f'results/{dataset}/{modeltype}/config{experiment}_{lrschedule}_{training_folder}_learning_curve'
                 f'{filename_spec}run_{run}.svg')
+    plt.close()
 
+def load_learning_curves(dataset, modeltype, lrschedule, experiment, run, training_folder, filename_spec):
+    learning_curve_frame = pd.read_csv(f'./results/{dataset}/{modeltype}/config{experiment}_{lrschedule}_{training_folder}'
+                                f'_learning_curve{filename_spec}run_{run}.csv', sep=';', decimal=',')
+    train_accuracy = learning_curve_frame.iloc[:, 0].values.tolist()
+    train_loss = learning_curve_frame.iloc[:, 1].values.tolist()
+    valid_accuracy = learning_curve_frame.iloc[:, 2].values.tolist()
+    valid_loss = learning_curve_frame.iloc[:, 3].values.tolist()
+
+    return train_accuracy, train_loss, valid_accuracy, valid_loss

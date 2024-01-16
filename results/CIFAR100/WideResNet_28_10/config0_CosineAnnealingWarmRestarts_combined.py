@@ -14,20 +14,20 @@ train_corruptions = np.array([
 ['uniform-l0.5', 400000.0, False],
 ['gaussian', 0.005, False],
 ['gaussian', 0.01, False],
+['gaussian', 0.015, False],
 ['gaussian', 0.02, False],
+['gaussian', 0.025, False],
 ['gaussian', 0.03, False],
 ['gaussian', 0.04, False],
 ['gaussian', 0.05, False],
 ['gaussian', 0.06, False],
-['gaussian', 0.08, False],
-['gaussian', 0.1, False],
-['gaussian', 0.12, False],
+['gaussian', 0.07, False],
 ['uniform-l0-impulse', 0.005, True],
 ['uniform-l0-impulse', 0.01, True],
-['uniform-l0-impulse', 0.015, True],
 ['uniform-l0-impulse', 0.02, True],
 ['uniform-l0-impulse', 0.03, True],
 ['uniform-l0-impulse', 0.04, True],
+['uniform-l0-impulse', 0.05, True],
 ['uniform-l0-impulse', 0.06, True],
 ['uniform-l0-impulse', 0.08, True],
 ['uniform-l0-impulse', 0.1, True],
@@ -51,8 +51,8 @@ normalize = False
 validontest = True
 lrschedule = 'CosineAnnealingWarmRestarts'
 learningrate = 0.1
-epochs = 372
-lrparams = {'T_0': 12, 'T_mult': 2}
+epochs = 310
+lrparams = {'T_0': 10, 'T_mult': 2}
 warmupepochs = 0
 earlystop = False
 earlystopPatience = 15
@@ -60,7 +60,7 @@ optimizer = 'SGD'
 optimizerparams = {'momentum': 0.9, 'weight_decay': 2e-5}
 number_workers = 1
 modeltype = 'WideResNet_28_10'
-modelparams = {'dropout_rate': 0.2}
+modelparams = {'dropout_rate': 0.1}
 resize = False
 aug_strat_check = True
 train_aug_strat = 'TrivialAugmentWide' #TrivialAugmentWide, RandAugment, AutoAugment, AugMix
@@ -189,14 +189,14 @@ test_corruptions = np.array([
 ])
 test_on_c = True
 combine_test_corruptions = False #augment the test dataset with all corruptions
-calculate_adv_distance = True
+calculate_adv_distance = False
 adv_distance_params = {'setsize': 1000, 'nb_iters': 100, 'eps_iter': 0.0005, 'norm': np.inf, "epsilon": 0.1}
 calculate_autoattack_robustness = False
 autoattack_params = {'setsize': 1000, 'epsilon': 8/255, 'norm': 'Linf'}
 
 test_count = 2
 if test_on_c:
-    test_count += 22
+    test_count += 23
 if combine_test_corruptions:
     test_count += 1
 else:

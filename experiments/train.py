@@ -1,21 +1,21 @@
 import argparse
 import ast
 import importlib
-import copy
 import numpy as np
 from tqdm import tqdm
 import shutil
 import torch.nn as nn
 import torch.cuda.amp
 import torch.optim as optim
-from torch.utils.data import DataLoader, Subset
+from torch.utils.data import DataLoader
 import torchvision.models as torchmodels
-from sklearn.model_selection import train_test_split
+import torchvision.transforms as transforms
+import copy
 
 from experiments.jsd_loss import JsdCrossEntropy
-from experiments.data_transforms import *
+import experiments.data as data
 import experiments.checkpoints as checkpoints
-from experiments.visuals_and_reports import learning_curves
+import experiments.utils as utils
 import experiments.models as low_dim_models
 
 import torch.backends.cudnn as cudnn
@@ -51,11 +51,10 @@ class str2dictAction(argparse.Action):
 parser = argparse.ArgumentParser(description='PyTorch Training with perturbations')
 parser.add_argument('--resume', type=str2bool, nargs='?', const=False, default=False,
                     help='resuming from saved checkpoint in fixed-path repo defined below')
-parser.add_argument('--noise', default='standard', type=str, help='type of noise')
-parser.add_argument('--epsilon', default=0.0, type=float, help='perturbation radius')
+parser.add_argument('--traincorruptions', default={'noise_type': 'standard', 'epsilon': 0.0, 'sphere': False, 'distribution': 'max'},
+                    type=str, action=str2dictAction, metavar='KEY=VALUE', help='dictionary for type of noise, epsilon value, '
+                    'whether it is always the maximum noise value and a distribution from which various epsilon are sampled')
 parser.add_argument('--run', default=0, type=int, help='run number')
-parser.add_argument('--max', type=str2bool, nargs='?', const=False, default=False,
-                    help='sample max epsilon values only (True) or random uniform values up to max epsilon (False)')
 parser.add_argument('--experiment', default=0, type=int,
                     help='experiment number - each experiment is defined in module config{experiment}')
 parser.add_argument('--batchsize', default=128, type=int,
@@ -90,6 +89,8 @@ parser.add_argument('--mixup_alpha', default=0.0, type=float, help='Mixup Alpha 
                     'both mixup and cutmix are >0, mixup or cutmix are selected by 0.5 chance')
 parser.add_argument('--cutmix_alpha', default=0.0, type=float, help='Cutmix Alpha parameter, Pytorch suggests 1.0. If '
                     'both mixup and cutmix are >0, mixup or cutmix are selected by 0.5 chance')
+parser.add_argument('--mixup_manifold', type=str2bool, nargs='?', const=False, default=False,
+                    help='Whether to apply mixup in the embedding layers of the network')
 parser.add_argument('--combine_train_corruptions', type=str2bool, nargs='?', const=True, default=True,
                     help='Whether to combine all training noise values by drawing from the randomly')
 parser.add_argument('--concurrent_combinations', default=1, type=int, help='How many of the training noise values should '
@@ -104,67 +105,44 @@ parser.add_argument('--warmupepochs', default=5, type=int,
                     help='Number of Warmupepochs for stable training early on. Start with factor 10 lower learning rate')
 parser.add_argument('--normalize', type=str2bool, nargs='?', const=False, default=False,
                     help='Whether to normalize input data to mean=0 and std=1')
-parser.add_argument('--num_classes', default=10, type=int, help='Number of classes of the dataset')
 parser.add_argument('--pixel_factor', default=1, type=int, help='default is 1 for 32px (CIFAR10), '
                     'e.g. 2 for 64px images. Scales convolutions automatically in the same model architecture')
+parser.add_argument('--minibatchsize', default=8, type=int, help='batchsize, for which a new corruption type is sampled. '
+                    'batchsize must be a multiple of minibatchsize. in case of p-norm corruptions with 0<p<inf, the same '
+                    'corruption is applied for all images in the minibatch')
 
 args = parser.parse_args()
 configname = (f'experiments.configs.config{args.experiment}')
 config = importlib.import_module(configname)
+if args.combine_train_corruptions == True:
+    train_corruptions = config.train_corruptions
+else:
+    train_corruptions = args.train_corruptions
 crossentropy = nn.CrossEntropyLoss(label_smoothing=args.lossparams["smoothing"])
 jsdcrossentropy = JsdCrossEntropy(**args.lossparams)
 
-def calculate_steps(): #+0.5 is a way of rounding up to account for the last partial batch in every epoch
-    if args.dataset == 'ImageNet':
-        steps = round(1281167/args.batchsize + 0.5) * (args.epochs + args.warmupepochs)
-        if args.validontest == True:
-            steps += (round(50000/args.batchsize + 0.5) * (args.epochs + args.warmupepochs))
-    if args.dataset == 'TinyImageNet':
-        steps = round(100000/args.batchsize + 0.5) * (args.epochs + args.warmupepochs)
-        if args.validontest == True:
-            steps += (round(10000/args.batchsize + 0.5) * (args.epochs + args.warmupepochs))
-    elif args.dataset == 'CIFAR10' or args.dataset == 'CIFAR100':
-        steps = round(50000 / args.batchsize + 0.5) * (args.epochs + args.warmupepochs)
-        if args.validontest == True:
-            steps += (round(10000/args.batchsize + 0.5) * (args.epochs + args.warmupepochs))
-    total_steps = int(steps)
-    return total_steps
-
-def train(pbar):
+def train_epoch(pbar):
     model.train()
     correct, total, train_loss, avg_train_loss = 0, 0, 0, 0
 
     for batch_idx, (inputs, targets) in enumerate(trainloader):
         optimizer.zero_grad()
-
-        inputs, targets = apply_mixing_functions(inputs, targets, args.mixup_alpha, args.cutmix_alpha, args.num_classes)
-
-        inputs_orig, inputs_pert = copy.deepcopy(inputs), copy.deepcopy(inputs)
-
-        if args.aug_strat_check == True:
-            inputs = apply_augstrat(inputs, args.train_aug_strat)
-
-        inputs = apply_lp_corruption(inputs, 4, args.combine_train_corruptions, config.train_corruptions,
-                                         args.concurrent_combinations, args.max, args.noise, args.epsilon)
-
         if args.jsd_loss == True:
-            if args.aug_strat_check == True:
-                inputs_pert = apply_augstrat(inputs_pert, args.train_aug_strat)
-            inputs_pert = apply_lp_corruption(inputs_pert, args.combine_train_corruptions, config.train_corruptions,
-                                                  args.concurrent_combinations, args.max, args.noise, args.epsilon)
-
+            inputs_orig, inputs_pert = copy.deepcopy(inputs), copy.deepcopy(inputs)
+        if args.aug_strat_check == True:
+            inputs = data.apply_augstrat(inputs, args.train_aug_strat)
+            if args.jsd_loss == True:
+                inputs_pert = data.apply_augstrat(inputs_pert, args.train_aug_strat)
         if args.jsd_loss == True:
             inputs = torch.cat((inputs_orig, inputs, inputs_pert), 0)
-        if args.resize == True:
-            inputs = transforms.Resize(224, antialias=True)(inputs)
 
         inputs, targets = inputs.to(device, dtype=torch.float32), targets.to(device)
         with torch.cuda.amp.autocast():
-            outputs = model(inputs)
+            outputs, mixed_targets = model(inputs, targets)
             if args.jsd_loss == True:
-                loss = jsdcrossentropy(outputs, targets)
+                loss = jsdcrossentropy(outputs, mixed_targets)
             else:
-                loss = crossentropy(outputs, targets)
+                loss = crossentropy(outputs, mixed_targets)
 
         scaler.scale(loss).backward()
         scaler.unscale_(optimizer)
@@ -175,12 +153,12 @@ def train(pbar):
 
         train_loss += loss.item()
         _, predicted = outputs.max(1)
-        if np.ndim(targets) == 2:
-            _, targets = targets.max(1)
+        if np.ndim(mixed_targets) == 2:
+            _, mixed_targets = mixed_targets.max(1)
         if args.jsd_loss == True:
-            targets = torch.cat((targets, targets, targets), 0)
-        total += targets.size(0)
-        correct += predicted.eq(targets).sum().item()
+            mixed_targets = torch.cat((mixed_targets, mixed_targets, mixed_targets), 0)
+        total += mixed_targets.size(0)
+        correct += predicted.eq(mixed_targets).sum().item()
         avg_train_loss = train_loss / (batch_idx + 1)
         pbar.set_description('[Train] Loss: {:.3f} | Acc: {:.3f} ({}/{})'.format(
             avg_train_loss, 100. * correct / total, correct, total))
@@ -189,72 +167,37 @@ def train(pbar):
     train_acc = 100. * correct / total
     return train_acc, avg_train_loss
 
-def valid(pbar):
+def valid_epoch(pbar):
+    model.eval()
     with torch.no_grad():
-        model.eval()
         test_loss, correct, total, avg_test_loss = 0, 0, 0, 0
 
         for batch_idx, (inputs, targets) in enumerate(validationloader):
 
-            if args.resize == True:
-                inputs = transforms.Resize(224, antialias=True)(inputs)
             inputs, targets = inputs.to(device, dtype=torch.float32), targets.to(device)
-            targets_pert = targets
 
             with torch.cuda.amp.autocast():
-                targets_pert_pred = model(inputs)
-                loss = crossentropy(targets_pert_pred, targets_pert)
+                outputs, targets = model(inputs, targets)
+                loss = crossentropy(outputs, targets)
 
             test_loss += loss.item()
-            _, predicted = targets_pert_pred.max(1)
-            total += targets_pert.size(0)
-            correct += predicted.eq(targets_pert).sum().item()
+            _, predicted = outputs.max(1)
+            total += targets.size(0)
+            correct += predicted.eq(targets).sum().item()
             avg_test_loss = test_loss / (batch_idx + 1)
             pbar.set_description(
                 '[Valid] Loss: {:.3f} | Acc: {:.3f} ({}/{})'.format(avg_test_loss, 100. * correct / total,
                                                                     correct, total))
             pbar.update(1)
 
-        acc = 100. * correct / total
-        return acc, avg_test_loss
-
-def load_data(transform_train, transform_valid, dataset, validontest):
-    if dataset == 'ImageNet' or dataset == 'TinyImageNet':
-        trainset = torchvision.datasets.ImageFolder(root=f'./experiments/data/{dataset}/train',
-                                                    transform=transform_train)
-        if validontest == True:
-            validset = torchvision.datasets.ImageFolder(root=f'./experiments/data/{dataset}/val',
-                                                        transform=transform_valid)
-        else:
-            trainset_clean = torchvision.datasets.ImageFolder(root=f'./experiments/data/{dataset}/train',
-                                                              transform=transform_valid)
-    if dataset == 'CIFAR10' or dataset == 'CIFAR100':
-        load_helper = getattr(torchvision.datasets, dataset)
-        trainset = load_helper(root='./experiments/data', train=True, download=True, transform=transform_train)
-        if validontest == True:
-            validset = load_helper(root='./experiments/data', train=False, download=True, transform=transform_valid)
-        else:
-            trainset_clean = load_helper(root='./experiments/data', train=True, download=True,
-                                         transform=transform_valid)
-
-    if validontest == False: #validation splitting
-        validsplit = 0.2
-        train_indices, val_indices, _, _ = train_test_split(
-            range(len(trainset)),
-            trainset.targets,
-            stratify=trainset.targets,
-            test_size=validsplit,
-            random_state=args.run)  # same validation split when calling train multiple times, but a random new validation on multiple runs
-        trainset = Subset(trainset, train_indices)
-        validset = Subset(trainset_clean, val_indices)
-
-    return trainset, validset
+    acc = 100. * correct / total
+    return acc, avg_test_loss
 
 if __name__ == '__main__':
     # Load and transform data
     print('Preparing data..')
-    transform_train, transform_valid = create_transforms(args.dataset, args.train_aug_strat, args.RandomEraseProbability)
-    trainset, validset = load_data(transform_train, transform_valid, args.dataset, args.validontest)
+    transform_train, transform_valid = data.create_transforms(args.dataset, args.resize, args.RandomEraseProbability)
+    trainset, validset, num_classes = data.load_data(transform_valid, args.dataset, args.validontest, transform_train, run=args.run)
     trainloader = DataLoader(trainset, batch_size=args.batchsize, shuffle=True, pin_memory=True, collate_fn=None, num_workers=args.number_workers)
     validationloader = DataLoader(validset, batch_size=args.batchsize, shuffle=True, pin_memory=True, num_workers=args.number_workers)
 
@@ -263,10 +206,13 @@ if __name__ == '__main__':
           f' | JSD loss: {args.jsd_loss}')
     if args.dataset == 'CIFAR10' or 'CIFAR100' or 'TinyImageNet':
         model_class = getattr(low_dim_models, args.modeltype)
-        model = model_class(dataset=args.dataset, normalized =args.normalize, num_classes=args.num_classes, factor=args.pixel_factor, **args.modelparams)
+        model = model_class(dataset=args.dataset, normalized =args.normalize, corruptions = train_corruptions, num_classes=num_classes,
+                            factor=args.pixel_factor, mixup_alpha=args.mixup_alpha, mixup_manifold=args.mixup_manifold,
+                            cutmix_alpha=args.cutmix_alpha, noise_minibatchsize=args.minibatchsize,
+                            concurrent_combinations = args.concurrent_combinations, **args.modelparams)
     else:
         model_class = getattr(torchmodels, args.modeltype)
-        model = model_class(num_classes = args.num_classes, **args.modelparams)
+        model = model_class(num_classes = num_classes, **args.modelparams)
     model = torch.nn.DataParallel(model).to(device)
 
     # Define Optimizer, Learningrate Scheduler, Scaler, and Early Stopping
@@ -278,10 +224,12 @@ if __name__ == '__main__':
         warmupscheduler = optim.lr_scheduler.LinearLR(optimizer, start_factor=0.1, end_factor=1.0, total_iters=args.warmupepochs)
         scheduler = optim.lr_scheduler.SequentialLR(optimizer, schedulers=[warmupscheduler, scheduler], milestones=[args.warmupepochs])
     scaler = torch.cuda.amp.GradScaler()
-    early_stopper = checkpoints.EarlyStopping(patience=args.earlystopPatience, verbose=False)
+    Checkpointer = checkpoints.Checkpoint(earlystopping=args.earlystop, patience=args.earlystopPatience, verbose=False,
+                                          model_path='experiments/trained_models/checkpoint.pt',
+                                          best_model_path = 'experiments/trained_models/best_checkpoint.pt')
 
     # Some necessary parameters
-    total_steps = calculate_steps()
+    total_steps = utils.calculate_steps(args.dataset, args.batchsize, args.epochs, args.warmupepochs, args.validontest)
     train_accs, train_losses, valid_accs, valid_losses = [], [], [], []
     training_folder = 'combined' if args.combine_train_corruptions == True else 'separate'
     filename_spec = str(f"_{args.noise}_eps_{args.epsilon}_{args.max}_" if
@@ -290,46 +238,45 @@ if __name__ == '__main__':
 
     # Resume from checkpoint
     if args.resume == True:
-        print('\nResuming from checkpoint..')
-        start_epoch, model, optimizer, scheduler = checkpoints.load_model(model, optimizer, scheduler, path = 'experiments/trained_models/checkpoint.pt')
+        start_epoch, model, optimizer, scheduler = Checkpointer._load_model(model, optimizer, scheduler, best=False)
+        print('\nResuming from checkpoint at epoch', start_epoch)
+        # load prior learning curve values
+        train_accs, train_losses, valid_accs, valid_losses = utils.load_learning_curves(args.dataset,
+                        args.modeltype, args.lrschedule, args.experiment, args.run, training_folder, filename_spec)
 
     # Training loop
     with tqdm(total=total_steps) as pbar:
         with torch.autograd.set_detect_anomaly(False, check_nan=False): #this may resolve some Cuda/cuDNN errors.
             # check_nan=True increases 32bit precision train time by ~20% and causes errors due to nan values for mixed precision training.
             for epoch in range(start_epoch, end_epoch):
-                train_acc, train_loss = train(pbar)
-                valid_acc, valid_loss = valid(pbar)
+                train_acc, train_loss = train_epoch(pbar)
+                valid_acc, valid_loss = valid_epoch(pbar)
                 train_accs.append(train_acc)
                 valid_accs.append(valid_acc)
                 train_losses.append(train_loss)
                 valid_losses.append(valid_loss)
+
                 if args.lrschedule == 'ReduceLROnPlateau':
                     scheduler.step(valid_loss)
                 else:
                     scheduler.step()
-
-                checkpoints.save_model(epoch, model, optimizer, scheduler, path = 'experiments/trained_models/checkpoint.pt')
-                early_stopper(valid_acc, model)
-                if early_stopper.best_model == True:
-                    checkpoints.save_model(epoch, model, optimizer, scheduler,
-                                           path='experiments/trained_models/best_checkpoint.pt')
-                if args.earlystop and early_stopper.early_stop:
-                    print("Early stopping")
+                # Check for best model, save model(s) and learning curve and check for earlystopping conditions
+                Checkpointer._earlystopping(valid_acc, model)
+                Checkpointer._save_checkpoint(model, optimizer, scheduler, epoch)
+                utils.save_learning_curves(args.dataset, args.modeltype, args.lrschedule, args.experiment, args.run,
+                                           train_accs, valid_accs, train_losses, valid_losses, training_folder, filename_spec)
+                if Checkpointer.early_stop:
                     end_epoch = epoch
                     break
 
     # Save final model
-    end_epoch, model, optimizer, scheduler = checkpoints.load_model(model, optimizer, scheduler,
-                                                                    path='experiments/trained_models/best_checkpoint.pt')
-    checkpoints.save_model(end_epoch, model, optimizer, scheduler, path = f'./experiments/trained_models/{args.dataset}'
+    end_epoch, model, optimizer, scheduler = Checkpointer._load_model(model, optimizer, scheduler, best=False)
+    Checkpointer._save_final_model(model, optimizer, scheduler, end_epoch, path = f'./experiments/trained_models/{args.dataset}'
                                                     f'/{args.modeltype}/config{args.experiment}_{args.lrschedule}_'
                                                     f'{training_folder}{filename_spec}run_{args.run}.pth')
     # print results
     print("Maximum validation accuracy of", max(valid_accs), "achieved after", np.argmax(valid_accs) + 1, "epochs; "
          "Minimum validation loss of", min(valid_losses), "achieved after", np.argmin(valid_losses) + 1, "epochs; ")
-    # save learning curves and config file
-    learning_curves(args.dataset, args.modeltype, args.lrschedule, args.experiment, args.run, train_accs,
-                    valid_accs, train_losses, valid_losses, training_folder, filename_spec)
+    # save config file
     shutil.copyfile(f'./experiments/configs/config{args.experiment}.py',
                     f'./results/{args.dataset}/{args.modeltype}/config{args.experiment}_{args.lrschedule}_{training_folder}.py')

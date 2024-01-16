@@ -12,6 +12,16 @@ train_corruptions = np.array([
 ['uniform-l0.5', 300000.0, False],
 ['uniform-l0.5', 350000.0, False],
 ['uniform-l0.5', 400000.0, False],
+['gaussian', 0.005, False],
+['gaussian', 0.01, False],
+['gaussian', 0.015, False],
+['gaussian', 0.02, False],
+['gaussian', 0.025, False],
+['gaussian', 0.03, False],
+['gaussian', 0.04, False],
+['gaussian', 0.05, False],
+['gaussian', 0.06, False],
+['gaussian', 0.07, False],
 ['uniform-l0-impulse', 0.005, True],
 ['uniform-l0-impulse', 0.01, True],
 ['uniform-l0-impulse', 0.02, True],
@@ -37,12 +47,12 @@ elif dataset == 'ImageNet':
 elif dataset == 'TinyImageNet':
     num_classes = 200
     pixel_factor = 2
-normalize = False
+normalize = True
 validontest = True
 lrschedule = 'CosineAnnealingWarmRestarts'
 learningrate = 0.1
-epochs = 310
-lrparams = {'T_0': 10, 'T_mult': 2}
+epochs = 372
+lrparams = {'T_0': 12, 'T_mult': 2}
 warmupepochs = 0
 earlystop = False
 earlystopPatience = 15
@@ -58,6 +68,7 @@ jsd_loss = False
 lossparams = {'num_splits': 3, 'alpha': 12, 'smoothing': 0.1}
 mixup_alpha = 0.2 #default 0.2 #If both mixup and cutmix are >0, mixup or cutmix are selected by 0.5 chance
 cutmix_alpha = 1.0 # default 1.0 #If both mixup and cutmix are >0, mixup or cutmix are selected by 0.5 chance
+mixup_manifold = True
 RandomEraseProbability = 0.1
 
 combine_train_corruptions = True #augment the train dataset with all corruptions

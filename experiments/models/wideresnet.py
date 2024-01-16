@@ -74,8 +74,13 @@ class Bottleneck(nn.Module):
         return out
 
 class WideResNet(ct_model.CtModel):
-    def __init__(self, depth, widen_factor, dataset, normalized, dropout_rate=0.0, num_classes=10, factor=1, block=WideBasic):
-        super(WideResNet, self).__init__(dataset=dataset, normalized=normalized)
+    def __init__(self, depth, widen_factor, dataset, normalized, corruptions, dropout_rate=0.0, num_classes=10,
+                 factor=1, block=WideBasic, mixup_alpha=0.0, mixup_manifold=False, cutmix_alpha=0.0,
+                 noise_minibatchsize=1, concurrent_combinations = 1):
+        super(WideResNet, self).__init__(dataset=dataset, normalized=normalized, num_classes=num_classes,
+                                         mixup_alpha=mixup_alpha, mixup_manifold=mixup_manifold, cutmix_alpha=cutmix_alpha,
+                                         corruptions=corruptions, noise_minibatchsize=noise_minibatchsize,
+                                         concurrent_combinations=concurrent_combinations)
         self.in_planes = 16
 
         assert ((depth-4)%6 ==0), 'Wide-resnet depth should be 6n+4'
@@ -90,6 +95,7 @@ class WideResNet(ct_model.CtModel):
         self.layer3 = self._wide_layer(block, nStages[3], n, dropout_rate, stride=2)
         self.bn1 = nn.BatchNorm2d(nStages[3], momentum=0.9)
         self.linear = nn.Linear(nStages[3], num_classes)
+        self.blocks = [self.conv1, self.layer1, self.layer2, self.layer3]
 
     def _wide_layer(self, block, planes, num_blocks, dropout_rate, stride):
         strides = [stride] + [1]*(num_blocks-1)
@@ -101,26 +107,47 @@ class WideResNet(ct_model.CtModel):
 
         return nn.Sequential(*layers)
 
-    def forward_ctmodel(self, x):
-        out = self.conv1(x)
-        out = self.layer1(out)
-        out = self.layer2(out)
-        out = self.layer3(out)
+    def forward(self, x, targets):
+        out = super(WideResNet, self).forward_normalize(x)
+        out, mixed_targets = super(WideResNet, self).forward_noise_mixup(out, targets)
         out = F.relu(self.bn1(out))
         out = F.avg_pool2d(out, 8)
         out = out.view(out.size(0), -1)
         out = self.linear(out)
 
-        return out
+        return out, mixed_targets
 
-def WideResNet_28_4(num_classes, factor, dataset, normalized, block=WideBasic, dropout_rate=0.0):
-    return WideResNet(depth=28, widen_factor=4, dataset=dataset, normalized=normalized, dropout_rate=dropout_rate, num_classes=num_classes, factor=factor, block=block)
+def WideResNet_28_2(num_classes, factor, dataset, normalized, corruptions, block=WideBasic, dropout_rate=0.0,
+                    mixup_alpha=0.0, mixup_manifold=False, cutmix_alpha=0.0, noise_minibatchsize=1, concurrent_combinations=1):
+    return WideResNet(depth=28, widen_factor=2, dataset=dataset, normalized=normalized, dropout_rate=dropout_rate,
+                      num_classes=num_classes, factor=factor, block=block, mixup_alpha=mixup_alpha,
+                      mixup_manifold=mixup_manifold, cutmix_alpha=cutmix_alpha, corruptions=corruptions,
+                      noise_minibatchsize=noise_minibatchsize, concurrent_combinations=concurrent_combinations)
 
-def WideResNet_28_10(num_classes, factor, dataset, normalized, block=WideBasic, dropout_rate=0.0):
-    return WideResNet(depth=28, widen_factor=10, dataset=dataset, normalized=normalized, dropout_rate=dropout_rate, num_classes=num_classes, factor=factor, block=block)
+def WideResNet_28_4(num_classes, factor, dataset, normalized, corruptions, block=WideBasic, dropout_rate=0.0,
+                    mixup_alpha=0.0, mixup_manifold=False, cutmix_alpha=0.0, noise_minibatchsize=1, concurrent_combinations=1):
+    return WideResNet(depth=28, widen_factor=4, dataset=dataset, normalized=normalized, dropout_rate=dropout_rate,
+                      num_classes=num_classes, factor=factor, block=block, mixup_alpha=mixup_alpha,
+                      mixup_manifold=mixup_manifold, cutmix_alpha=cutmix_alpha, corruptions=corruptions,
+                      noise_minibatchsize=noise_minibatchsize, concurrent_combinations=concurrent_combinations)
 
-def WideResNet_28_12(num_classes, factor, dataset, normalized, block=WideBasic, dropout_rate=0.0):
-    return WideResNet(depth=28, widen_factor=12, dataset=dataset, normalized=normalized, dropout_rate=dropout_rate, num_classes=num_classes, factor=factor, block=block)
+def WideResNet_28_10(num_classes, factor, dataset, normalized, corruptions, block=WideBasic, dropout_rate=0.0,
+                    mixup_alpha=0.0, mixup_manifold=False, cutmix_alpha=0.0, noise_minibatchsize=1, concurrent_combinations=1):
+    return WideResNet(depth=28, widen_factor=10, dataset=dataset, normalized=normalized, dropout_rate=dropout_rate,
+                      num_classes=num_classes, factor=factor, block=block, mixup_alpha=mixup_alpha,
+                      mixup_manifold=mixup_manifold, cutmix_alpha=cutmix_alpha, corruptions=corruptions,
+                      noise_minibatchsize=noise_minibatchsize, concurrent_combinations=concurrent_combinations)
 
-def WideResNet_40_10(num_classes, factor, dataset, normalized, block=WideBasic, dropout_rate=0.0):
-    return WideResNet(depth=40, widen_factor=10, dataset=dataset, normalized=normalized, dropout_rate=dropout_rate, num_classes=num_classes, factor=factor, block=block)
+def WideResNet_28_12(num_classes, factor, dataset, normalized, corruptions, block=WideBasic, dropout_rate=0.0,
+                    mixup_alpha=0.0, mixup_manifold=False, cutmix_alpha=0.0, noise_minibatchsize=1, concurrent_combinations=1):
+    return WideResNet(depth=28, widen_factor=12, dataset=dataset, normalized=normalized, dropout_rate=dropout_rate,
+                      num_classes=num_classes, factor=factor, block=block, mixup_alpha=mixup_alpha,
+                      mixup_manifold=mixup_manifold, cutmix_alpha=cutmix_alpha, corruptions=corruptions,
+                      noise_minibatchsize=noise_minibatchsize, concurrent_combinations=concurrent_combinations)
+
+def WideResNet_40_10(num_classes, factor, dataset, normalized, corruptions, block=WideBasic, dropout_rate=0.0,
+                    mixup_alpha=0.0, mixup_manifold=False, cutmix_alpha=0.0, noise_minibatchsize=1, concurrent_combinations=1):
+    return WideResNet(depth=40, widen_factor=10, dataset=dataset, normalized=normalized, dropout_rate=dropout_rate,
+                      num_classes=num_classes, factor=factor, block=block, mixup_alpha=mixup_alpha,
+                      mixup_manifold=mixup_manifold, cutmix_alpha=cutmix_alpha, corruptions=corruptions,
+                      noise_minibatchsize=noise_minibatchsize, concurrent_combinations=concurrent_combinations)
