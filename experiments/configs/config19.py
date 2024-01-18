@@ -11,7 +11,7 @@ concurrent_combinations = 1 #only has an effect if combine_train_corruption is T
 
 batchsize = 512
 minibatchsize = 8
-dataset = 'CIFAR10' #ImageNet #CIFAR100 #CIFAR10 #TinyImageNet
+dataset = 'CIFAR100' #ImageNet #CIFAR100 #CIFAR10 #TinyImageNet
 normalize = False
 validontest = True
 lrschedule = 'CosineAnnealingWarmRestarts'

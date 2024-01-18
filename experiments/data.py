@@ -55,7 +55,7 @@ def load_data(transform_test, dataset, validontest, transform_train = None, run=
 
     return trainset, validset, num_classes
 
-def create_transforms(dataset, resize = False, RandomEraseProbability = 0.0):
+def create_transforms(dataset, train_aug_strat, resize = False, RandomEraseProbability = 0.0):
     # list of all data transformations used
     t = transforms.ToTensor()
     c32 = transforms.RandomCrop(32, padding=4)
@@ -65,6 +65,7 @@ def create_transforms(dataset, resize = False, RandomEraseProbability = 0.0):
     c224 = transforms.CenterCrop(224)
     rrc224 = transforms.RandomResizedCrop(224, antialias=True)
     re = transforms.RandomErasing(p=RandomEraseProbability, value='random')
+    tf = getattr(transforms, train_aug_strat)
 
     # transformations of validation/test set
     transforms_test = transforms.Compose([t])
@@ -101,11 +102,37 @@ def normalization_values(dataset):
 
     return mean, std
 
-def apply_augstrat(batch, train_aug_strat):
-    batch = batch * 255.0
-    batch = torch.clip(batch, 0.0, 255.0)
-    batch = batch.type(torch.uint8)
-    tf = getattr(transforms, train_aug_strat)
-    batch = tf()(batch)
-    batch = batch.type(torch.float32) / 255.0
+def apply_augstrat(batch, train_aug_strat, mini):
+
+    for id, img in enumerate(batch):
+        img = img * 255.0
+        img = img.type(torch.uint8)
+        tf = getattr(transforms, train_aug_strat)
+        img = tf()(img)
+        img = img.type(torch.float32) / 255.0
+        batch[id] = img
+
     return batch
+
+class AugmentedDataset(torch.utils.data.Dataset):
+  """Dataset wrapper to perform augmentation and allow loss functions."""
+
+  def __init__(self, dataset, preprocess, robust_samples=0):
+    self.dataset = dataset
+    self.preprocess = preprocess
+    self.robust_samples = robust_samples
+
+  def __getitem__(self, i):
+    x, y = self.dataset[i]
+    if self.robust_samples == 0:
+      return aug(x, self.preprocess), y
+    elif self.robust_samples == 1:
+      im_tuple = (self.preprocess(x), aug(x, self.preprocess))
+      return im_tuple, y
+    elif self.robust_samples == 2:
+      im_tuple = (self.preprocess(x), aug(x, self.preprocess),
+                  aug(x, self.preprocess))
+      return im_tuple, y
+
+  def __len__(self):
+    return len(self.dataset)

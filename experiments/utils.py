@@ -1,6 +1,22 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import torch
+
+def plot_images(images, corrupted_images, number):
+    fig, axs = plt.subplots(number, 2)
+    for i in range(number):
+        image = images[i]
+        image = torch.squeeze(image)
+        image = image.permute(1, 2, 0)
+        axs[i, 0].imshow(image)
+        corrupted_image = corrupted_images[i]
+        corrupted_image = torch.squeeze(corrupted_image)
+        corrupted_image = corrupted_image.permute(1, 2, 0)
+        axs[i, 1].imshow(corrupted_image)
+    #return fig
+
+    plt.show()
 
 def calculate_steps(dataset, batchsize, epochs, warmupepochs, validontest):
     #+0.5 is a way of rounding up to account for the last partial batch in every epoch

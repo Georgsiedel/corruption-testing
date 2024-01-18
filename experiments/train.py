@@ -9,7 +9,6 @@ import torch.cuda.amp
 import torch.optim as optim
 from torch.utils.data import DataLoader
 import torchvision.models as torchmodels
-import torchvision.transforms as transforms
 import copy
 
 from experiments.jsd_loss import JsdCrossEntropy
@@ -127,14 +126,17 @@ def train_epoch(pbar):
 
     for batch_idx, (inputs, targets) in enumerate(trainloader):
         optimizer.zero_grad()
+
         if args.jsd_loss == True:
             inputs_orig, inputs_pert = copy.deepcopy(inputs), copy.deepcopy(inputs)
         if args.aug_strat_check == True:
-            inputs = data.apply_augstrat(inputs, args.train_aug_strat)
+            inputs = data.apply_augstrat(inputs, args.train_aug_strat, args.minibatchsize)
             if args.jsd_loss == True:
-                inputs_pert = data.apply_augstrat(inputs_pert, args.train_aug_strat)
+                inputs_pert = data.apply_augstrat(inputs_pert, args.train_aug_strat, args.minibatchsize)
         if args.jsd_loss == True:
             inputs = torch.cat((inputs_orig, inputs, inputs_pert), 0)
+
+        #utils.plot_images(inputs_orig, inputs, 3)
 
         inputs, targets = inputs.to(device, dtype=torch.float32), targets.to(device)
         with torch.cuda.amp.autocast():

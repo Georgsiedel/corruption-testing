@@ -37,10 +37,8 @@ class CtModel(nn.Module):
         elif self.mixup_alpha > 0.0 and self.mixup_manifold == True: k = np.random.choice(range(3), 1)[0]
         elif self.mixup_alpha > 0.0 or self.cutmix_alpha > 0.0: k = 0
         else: k = -1
-        #out_double = copy.deepcopy(out)
         if k == -1:
             out = apply_lp_corruption(out, self.noise_minibatchsize, self.corruptions, self.concurrent_combinations, self.normalized, self.dataset)
-        #print(torch.equal(out, out_double))
         if k == 0:  # Do input mixup if k is 0
             out, targets = mixup_process(out, targets, self.num_classes, self.cutmix_alpha, self.mixup_alpha, manifold=False)
             out = apply_lp_corruption(out, self.noise_minibatchsize, self.corruptions, self.concurrent_combinations, self.normalized, self.dataset)
