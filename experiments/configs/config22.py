@@ -16,9 +16,9 @@ combine_train_corruptions = True #augment the train dataset with all corruptions
 concurrent_combinations = 1 #only has an effect if combine_train_corruption is True
 
 batchsize = 512
-minibatchsize = 8
+minibatchsize = 16
 dataset = 'CIFAR100' #ImageNet #CIFAR100 #CIFAR10 #TinyImageNet
-normalize = True
+normalize = False
 validontest = True
 validonc = True
 lrschedule = 'CosineAnnealingWarmRestarts'
@@ -31,7 +31,7 @@ earlystopPatience = 15
 optimizer = 'SGD'
 optimizerparams = {'momentum': 0.9, 'weight_decay': 5e-5}
 number_workers = 1
-modeltype = 'WideResNet_28_4'
+modeltype = 'WideResNet_28_10'
 modelparams = {'dropout_rate': 0.1}
 resize = False
 aug_strat_check = True
@@ -39,8 +39,8 @@ train_aug_strat = 'TrivialAugmentWide' #TrivialAugmentWide, RandAugment, AutoAug
 loss_function = 'ce' #'ce', 'jsd'
 lossparams = {'num_splits': 3, 'alpha': 12, 'smoothing': 0.1}
 mixup = {'alpha': 0.2, 'p': 1.0} #default alpha 0.2 #If both mixup and cutmix are >0, mixup or cutmix are selected by 0.5 chance
-cutmix = {'alpha': 1.0, 'p': 1.0} # default alpha 1.0 #If both mixup and cutmix are >0, mixup or cutmix are selected by 0.5 chance
-manifold = {'apply': True, 'noise_factor': 1}
+cutmix = {'alpha': 1.0, 'p': 0.0} # default alpha 1.0 #If both mixup and cutmix are >0, mixup or cutmix are selected by 0.5 chance
+manifold = {'apply': True, 'noise_factor': 4}
 RandomEraseProbability = 0.0
 
 #define train and test corruptions:

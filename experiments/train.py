@@ -4,18 +4,16 @@ import importlib
 import numpy as np
 from tqdm import tqdm
 import shutil
-import torch.nn as nn
 import torch.cuda.amp
 import torch.optim as optim
 from torch.utils.data import DataLoader
 import torchvision.models as torchmodels
-import copy
 
-from experiments.jsd_loss import JsdCrossEntropy
 import experiments.data as data
 import experiments.checkpoints as checkpoints
 import experiments.utils as utils
 import experiments.models as low_dim_models
+from experiments.eval_corruptions import compute_c_corruptions
 
 import torch.backends.cudnn as cudnn
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -82,14 +80,16 @@ parser.add_argument('--resize', type=str2bool, nargs='?', const=False, default=F
 parser.add_argument('--aug_strat_check', type=str2bool, nargs='?', const=True, default=False,
                     help='Whether to use an auto-augmentation scheme')
 parser.add_argument('--train_aug_strat', default='TrivialAugmentWide', type=str, help='auto-augmentation scheme')
-parser.add_argument('--jsd_loss', type=str2bool, nargs='?', const=False, default=False,
-                    help='Whether to use Jensen-Shannon-Divergence loss function (enforcing smoother models)')
-parser.add_argument('--mixup_alpha', default=0.0, type=float, help='Mixup Alpha parameter, Pytorch suggests 0.2. If '
-                    'both mixup and cutmix are >0, mixup or cutmix are selected by 0.5 chance')
-parser.add_argument('--cutmix_alpha', default=0.0, type=float, help='Cutmix Alpha parameter, Pytorch suggests 1.0. If '
-                    'both mixup and cutmix are >0, mixup or cutmix are selected by 0.5 chance')
-parser.add_argument('--mixup_manifold', type=str2bool, nargs='?', const=False, default=False,
-                    help='Whether to apply mixup in the embedding layers of the network')
+parser.add_argument('--loss_function', default='ce', type=str, help='loss function to use. ce for Cross Entropy,'
+                    'jsd for Jensen-Shannon Divergence loss, more to come')
+parser.add_argument('--mixup', default={'alpha': 0.2, 'p': 0.0}, type=str, action=str2dictAction, metavar='KEY=VALUE',
+                    help='Mixup parameters, Pytorch suggests 0.2 for alpha. Mixup, Cutmix and RandomErasing are randomly '
+                    'chosen without overlapping based on their probability, even if the sum of the probabilities is >1')
+parser.add_argument('--cutmix', default={'alpha': 1.0, 'p': 0.0}, type=str, action=str2dictAction, metavar='KEY=VALUE',
+                    help='Cutmix parameters, Pytorch suggests 1.0 for alpha. Mixup, Cutmix and RandomErasing are randomly '
+                    'chosen without overlapping based on their probability, even if the sum of the probabilities is >1')
+parser.add_argument('--manifold', default={'apply': False, 'noise_factor': 4}, type=str, action=str2dictAction, metavar='KEY=VALUE',
+                    help='Choose whether to apply noisy mixup in manifold layers')
 parser.add_argument('--combine_train_corruptions', type=str2bool, nargs='?', const=True, default=True,
                     help='Whether to combine all training noise values by drawing from the randomly')
 parser.add_argument('--concurrent_combinations', default=1, type=int, help='How many of the training noise values should '
@@ -109,6 +109,9 @@ parser.add_argument('--pixel_factor', default=1, type=int, help='default is 1 fo
 parser.add_argument('--minibatchsize', default=8, type=int, help='batchsize, for which a new corruption type is sampled. '
                     'batchsize must be a multiple of minibatchsize. in case of p-norm corruptions with 0<p<inf, the same '
                     'corruption is applied for all images in the minibatch')
+parser.add_argument('--validonc', type=str2bool, nargs='?', const=False, default=False,
+                    help='Whether to do a validation on a subset of c-data every epoch')
+
 
 args = parser.parse_args()
 configname = (f'experiments.configs.config{args.experiment}')
@@ -117,8 +120,6 @@ if args.combine_train_corruptions == True:
     train_corruptions = config.train_corruptions
 else:
     train_corruptions = args.train_corruptions
-crossentropy = nn.CrossEntropyLoss(label_smoothing=args.lossparams["smoothing"])
-jsdcrossentropy = JsdCrossEntropy(**args.lossparams)
 
 def train_epoch(pbar):
     model.train()
@@ -127,24 +128,13 @@ def train_epoch(pbar):
     for batch_idx, (inputs, targets) in enumerate(trainloader):
         optimizer.zero_grad()
 
-        if args.jsd_loss == True:
-            inputs_orig, inputs_pert = copy.deepcopy(inputs), copy.deepcopy(inputs)
-        if args.aug_strat_check == True:
-            inputs = data.apply_augstrat(inputs, args.train_aug_strat, args.minibatchsize)
-            if args.jsd_loss == True:
-                inputs_pert = data.apply_augstrat(inputs_pert, args.train_aug_strat, args.minibatchsize)
-        if args.jsd_loss == True:
-            inputs = torch.cat((inputs_orig, inputs, inputs_pert), 0)
-
-        #utils.plot_images(inputs_orig, inputs, 3)
+        if robust_samples >= 1:
+            inputs = torch.cat(inputs, 0)
 
         inputs, targets = inputs.to(device, dtype=torch.float32), targets.to(device)
         with torch.cuda.amp.autocast():
             outputs, mixed_targets = model(inputs, targets)
-            if args.jsd_loss == True:
-                loss = jsdcrossentropy(outputs, mixed_targets)
-            else:
-                loss = crossentropy(outputs, mixed_targets)
+            loss = criterion(outputs, mixed_targets)
 
         scaler.scale(loss).backward()
         scaler.unscale_(optimizer)
@@ -157,8 +147,8 @@ def train_epoch(pbar):
         _, predicted = outputs.max(1)
         if np.ndim(mixed_targets) == 2:
             _, mixed_targets = mixed_targets.max(1)
-        if args.jsd_loss == True:
-            mixed_targets = torch.cat((mixed_targets, mixed_targets, mixed_targets), 0)
+        if robust_samples >= 1:
+            mixed_targets = torch.cat([mixed_targets] * robust_samples, 0)
         total += mixed_targets.size(0)
         correct += predicted.eq(mixed_targets).sum().item()
         avg_train_loss = train_loss / (batch_idx + 1)
@@ -180,7 +170,7 @@ def valid_epoch(pbar):
 
             with torch.cuda.amp.autocast():
                 outputs, targets = model(inputs, targets)
-                loss = crossentropy(outputs, targets)
+                loss = criterion(outputs, targets)
 
             test_loss += loss.item()
             _, predicted = outputs.max(1)
@@ -192,26 +182,37 @@ def valid_epoch(pbar):
                                                                     correct, total))
             pbar.update(1)
 
+        pbar.set_description(
+            '[Valid] Robust Accuracy Calculation. Last Robust Accuracy: {:.3f}'.format(valid_accs_robust[-1] if valid_accs_robust else 0))
+        acc_c = compute_c_corruptions(args.dataset, testsets_c, model, batchsize=200,
+                                      num_classes=num_classes, eval_run = True)[0] if args.validonc == True else 0
+        pbar.update(1)
+
+
+
     acc = 100. * correct / total
-    return acc, avg_test_loss
+    return acc, avg_test_loss, acc_c
 
 if __name__ == '__main__':
     # Load and transform data
     print('Preparing data..')
-    transform_train, transform_valid = data.create_transforms(args.dataset, args.resize, args.RandomEraseProbability)
-    trainset, validset, num_classes = data.load_data(transform_valid, args.dataset, args.validontest, transform_train, run=args.run)
+    transforms_preprocess, transforms_augmentation = data.create_transforms(args.dataset, args.aug_strat_check, args.train_aug_strat, args.resize, args.RandomEraseProbability)
+    criterion, robust_samples = utils.get_criterion(args.loss_function, args.lossparams)
+    trainset, validset, testset, num_classes = data.load_data(transforms_preprocess, args.dataset, args.validontest, transforms_augmentation, run=args.run, robust_samples=robust_samples)
+    testsets_c = data.load_data_c(args.dataset, testset, args.resize, transforms_preprocess, args.validonc, subsetsize=200)
     trainloader = DataLoader(trainset, batch_size=args.batchsize, shuffle=True, pin_memory=True, collate_fn=None, num_workers=args.number_workers)
     validationloader = DataLoader(validset, batch_size=args.batchsize, shuffle=True, pin_memory=True, num_workers=args.number_workers)
 
     # Construct model
     print(f'\nBuilding {args.modeltype} model with {args.modelparams} | Augmentation strategy: {args.aug_strat_check}'
-          f' | JSD loss: {args.jsd_loss}')
+          f' | Loss Function: {args.loss_function}')
     if args.dataset == 'CIFAR10' or 'CIFAR100' or 'TinyImageNet':
         model_class = getattr(low_dim_models, args.modeltype)
         model = model_class(dataset=args.dataset, normalized =args.normalize, corruptions = train_corruptions, num_classes=num_classes,
-                            factor=args.pixel_factor, mixup_alpha=args.mixup_alpha, mixup_manifold=args.mixup_manifold,
-                            cutmix_alpha=args.cutmix_alpha, noise_minibatchsize=args.minibatchsize,
+                            factor=args.pixel_factor, mixup= args.mixup, manifold = args.manifold, cutmix = args.cutmix,
+                            random_erase_p = args.RandomEraseProbability, noise_minibatchsize=args.minibatchsize,
                             concurrent_combinations = args.concurrent_combinations, **args.modelparams)
+
     else:
         model_class = getattr(torchmodels, args.modeltype)
         model = model_class(num_classes = num_classes, **args.modelparams)
@@ -232,7 +233,7 @@ if __name__ == '__main__':
 
     # Some necessary parameters
     total_steps = utils.calculate_steps(args.dataset, args.batchsize, args.epochs, args.warmupepochs, args.validontest)
-    train_accs, train_losses, valid_accs, valid_losses = [], [], [], []
+    train_accs, train_losses, valid_accs, valid_losses, valid_accs_robust = [], [], [], [], []
     training_folder = 'combined' if args.combine_train_corruptions == True else 'separate'
     filename_spec = str(f"_{args.noise}_eps_{args.epsilon}_{args.max}_" if
                         args.combine_train_corruptions == False else f"_")
@@ -243,8 +244,8 @@ if __name__ == '__main__':
         start_epoch, model, optimizer, scheduler = Checkpointer._load_model(model, optimizer, scheduler, best=False)
         print('\nResuming from checkpoint at epoch', start_epoch)
         # load prior learning curve values
-        train_accs, train_losses, valid_accs, valid_losses = utils.load_learning_curves(args.dataset,
-                        args.modeltype, args.lrschedule, args.experiment, args.run, training_folder, filename_spec)
+        train_accs, train_losses, valid_accs, valid_losses, valid_accs_robust = utils.load_learning_curves(args.dataset,
+                        args.modeltype, args.lrschedule, args.experiment, args.run, training_folder, filename_spec, args.validonc)
 
     # Training loop
     with tqdm(total=total_steps) as pbar:
@@ -252,9 +253,10 @@ if __name__ == '__main__':
             # check_nan=True increases 32bit precision train time by ~20% and causes errors due to nan values for mixed precision training.
             for epoch in range(start_epoch, end_epoch):
                 train_acc, train_loss = train_epoch(pbar)
-                valid_acc, valid_loss = valid_epoch(pbar)
+                valid_acc, valid_loss, acc_c = valid_epoch(pbar)
                 train_accs.append(train_acc)
                 valid_accs.append(valid_acc)
+                valid_accs_robust.append(acc_c)
                 train_losses.append(train_loss)
                 valid_losses.append(valid_loss)
 
@@ -266,7 +268,7 @@ if __name__ == '__main__':
                 Checkpointer._earlystopping(valid_acc, model)
                 Checkpointer._save_checkpoint(model, optimizer, scheduler, epoch)
                 utils.save_learning_curves(args.dataset, args.modeltype, args.lrschedule, args.experiment, args.run,
-                                           train_accs, valid_accs, train_losses, valid_losses, training_folder, filename_spec)
+                                           train_accs, valid_accs, valid_accs_robust, args.validonc, train_losses, valid_losses, training_folder, filename_spec)
                 if Checkpointer.early_stop:
                     end_epoch = epoch
                     break

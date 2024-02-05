@@ -3,12 +3,10 @@ import numpy as np
 import torch.backends.cudnn as cudnn
 import torchvision.models as torchmodels
 from torch.utils.data import DataLoader
-import torchvision.transforms as transforms
 from torchmetrics.classification import MulticlassCalibrationError
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 import experiments.models as low_dim_models
-from experiments.noise import apply_lp_corruption
 import experiments.eval_adversarial as eval_adversarial
 import experiments.eval_corruptions as eval_corruptions
 import experiments.data as data
@@ -46,16 +44,16 @@ def eval_metric(modelfilename, test_corruptions, combine_test_corruptions, test_
                 calculate_autoattack_robustness, autoattack_params, pixel_factor):
 
     #Load data
-    _, test_transforms = data.create_transforms(dataset, resize)
-    _, testset, num_classes = data.load_data(test_transforms, dataset, validontest = True)
+    test_transforms, _ = data.create_transforms(dataset, aug_strat_check=False, train_aug_strat='None', resize=resize)
+    _, _, testset, num_classes = data.load_data(test_transforms, dataset, validontest = True)
     testloader = DataLoader(testset, batch_size=batchsize, shuffle =False, pin_memory=True, num_workers=workers)
 
     #Load model
     if dataset == 'CIFAR10' or 'CIFAR100' or 'TinyImageNet':
         model_class = getattr(low_dim_models, modeltype)
         model = model_class(dataset = dataset, normalized = normalized, num_classes=num_classes, factor=pixel_factor,
-                            mixup_alpha=0.0, mixup_manifold=False, cutmix_alpha=0.0, corruptions=None,
-                            **modelparams)
+                            mixup = {'alpha': 0.0, 'p': 0.0}, manifold={'apply': False, 'noise_factor': 1}, cutmix={'alpha': 0.0, 'p': 0.0},
+                            random_erase_p = 0.0, corruptions=None, **modelparams)
     else:
         model_class = getattr(torchmodels, modeltype)
         model = model_class(num_classes = num_classes, **modelparams)
@@ -70,7 +68,8 @@ def eval_metric(modelfilename, test_corruptions, combine_test_corruptions, test_
     accs = accs + [acc, rmsce]
 
     if test_on_c == True: # C-dataset robust accuracy
-        accs_c = eval_corruptions.compute_c_corruptions(dataset, testloader, model, batchsize, num_classes, test_transforms, resize)
+        testsets_c = data.load_data_c(dataset, testset, resize, test_transforms, subset=False, subsetsize=None)
+        accs_c = eval_corruptions.compute_c_corruptions(dataset, testsets_c, model, batchsize, num_classes, eval_run = False)
         accs = accs + accs_c
     if calculate_adv_distance == True: # adversarial distance calculation
         adv_acc_high_iter_pgd, dst1, idx1, dst2, idx2 = eval_adversarial.compute_adv_distance(testset, workers, model, adv_distance_params)

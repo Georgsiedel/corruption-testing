@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import torch
+from experiments.jsd_loss import JsdCrossEntropy
 
 def plot_images(images, corrupted_images, number):
     fig, axs = plt.subplots(number, 2)
@@ -34,6 +35,13 @@ def calculate_steps(dataset, batchsize, epochs, warmupepochs, validontest):
             steps += (round(10000/batchsize + 0.5) * (epochs + warmupepochs))
     total_steps = int(steps)
     return total_steps
+
+def get_criterion(loss_function, lossparams):
+    if loss_function == 'jsd':
+        criterion, robust_samples = JsdCrossEntropy(**lossparams), lossparams["num_splits"] - 1
+    else:
+        criterion, robust_samples = torch.nn.CrossEntropyLoss(label_smoothing=lossparams["smoothing"]), 0
+    return criterion, robust_samples
 
 def create_report(avg_test_metrics, max_test_metrics, std_test_metrics, train_corruptions, test_corruptions,
                 combine_train_corruptions, combine_test_corruptions, dataset, modeltype, lrschedule, experiment,
@@ -82,16 +90,24 @@ def create_report(avg_test_metrics, max_test_metrics, std_test_metrics, train_co
                                 f'metrics_test_std.csv', index=True, header=True,
                                 sep=';', float_format='%1.4f', decimal=',')
 
-def save_learning_curves(dataset, modeltype, lrschedule, experiment, run, train_accs, valid_accs,
+def save_learning_curves(dataset, modeltype, lrschedule, experiment, run, train_accs, valid_accs, valid_accs_robust, validonc,
                     train_losses, valid_losses, training_folder, filename_spec):
 
 
-    learning_curve_frame = pd.DataFrame({"train_accuracy": train_accs, "train_loss": train_losses,
-                                         "valid_accuracy": valid_accs, "valid_loss": valid_losses})
+    if validonc == False:
+        learning_curve_frame = pd.DataFrame({"train_accuracy": train_accs, "train_loss": train_losses,
+                                             "valid_accuracy": valid_accs, "valid_loss": valid_losses})
+
+    else:
+        learning_curve_frame = pd.DataFrame({"train_accuracy": train_accs, "train_loss": train_losses,
+                                         "valid_accuracy": valid_accs, "valid_loss": valid_losses,
+                                         "valid_accuracy_robust": valid_accs_robust})
     x = list(range(1, len(train_accs) + 1))
     plt.figure()
     plt.plot(x, train_accs, label='Train Accuracy')
     plt.plot(x, valid_accs, label='Validation Accuracy')
+    if validonc == True:
+        plt.plot(x, valid_accs_robust, label='Robust Validation Accuracy')
     plt.title('Training and Validation Accuracy')
     plt.xlabel('Epochs')
     plt.ylabel('Accuracy')
@@ -105,12 +121,16 @@ def save_learning_curves(dataset, modeltype, lrschedule, experiment, run, train_
                 f'{filename_spec}run_{run}.svg')
     plt.close()
 
-def load_learning_curves(dataset, modeltype, lrschedule, experiment, run, training_folder, filename_spec):
+def load_learning_curves(dataset, modeltype, lrschedule, experiment, run, training_folder, filename_spec, validonc):
     learning_curve_frame = pd.read_csv(f'./results/{dataset}/{modeltype}/config{experiment}_{lrschedule}_{training_folder}'
                                 f'_learning_curve{filename_spec}run_{run}.csv', sep=';', decimal=',')
     train_accuracy = learning_curve_frame.iloc[:, 0].values.tolist()
     train_loss = learning_curve_frame.iloc[:, 1].values.tolist()
     valid_accuracy = learning_curve_frame.iloc[:, 2].values.tolist()
     valid_loss = learning_curve_frame.iloc[:, 3].values.tolist()
+    if validonc == True:
+        valid_accuracy_robust = learning_curve_frame.iloc[:, 4].values.tolist()
+    else:
+        valid_accuracy_robust = []
 
-    return train_accuracy, train_loss, valid_accuracy, valid_loss
+    return train_accuracy, train_loss, valid_accuracy, valid_loss, valid_accuracy_robust

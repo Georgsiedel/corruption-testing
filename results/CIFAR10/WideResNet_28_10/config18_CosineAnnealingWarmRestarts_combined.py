@@ -2,25 +2,18 @@ import numpy as np
 
 train_corruptions = np.array([
 #{'noise_type': 'standard', 'epsilon': 0.0, 'sphere': False, 'distribution': 'beta2-5'},
-{'noise_type': 'uniform-linf', 'epsilon': 0.15, 'sphere': False, 'distribution': 'uniform'},
-{'noise_type': 'gaussian', 'epsilon': 0.1, 'sphere': False, 'distribution': 'uniform'},
-{'noise_type': 'uniform-l0.5', 'epsilon': 400000.0, 'sphere': False, 'distribution': 'uniform'},
-{'noise_type': 'uniform-l1', 'epsilon': 200.0, 'sphere': False, 'distribution': 'uniform'},
-{'noise_type': 'uniform-l2', 'epsilon': 5.0, 'sphere': False, 'distribution': 'uniform'},
-{'noise_type': 'uniform-l5', 'epsilon': 0.6, 'sphere': False, 'distribution': 'uniform'},
-{'noise_type': 'uniform-l50', 'epsilon': 0.18, 'sphere': False, 'distribution': 'uniform'},
-{'noise_type': 'uniform-l0-impulse', 'epsilon': 0.2, 'sphere': False, 'distribution': 'uniform'},
-{'noise_type': 'uniform-l0-impulse', 'epsilon': 0.15, 'sphere': True, 'distribution': 'uniform'}
+{'noise_type': 'uniform-linf', 'epsilon': 0.2, 'sphere': False, 'distribution': 'beta2-5'},
+{'noise_type': 'gaussian', 'epsilon': 0.2, 'sphere': False, 'distribution': 'beta2-5'},
+{'noise_type': 'uniform-l0-impulse', 'epsilon': 0.2, 'sphere': False, 'distribution': 'beta2-5'}
 ])
 combine_train_corruptions = True #augment the train dataset with all corruptions
 concurrent_combinations = 1 #only has an effect if combine_train_corruption is True
 
 batchsize = 512
 minibatchsize = 8
-dataset = 'CIFAR100' #ImageNet #CIFAR100 #CIFAR10 #TinyImageNet
-normalize = True
+dataset = 'CIFAR10' #ImageNet #CIFAR100 #CIFAR10 #TinyImageNet
+normalize = False
 validontest = True
-validonc = True
 lrschedule = 'CosineAnnealingWarmRestarts'
 learningrate = 0.15
 epochs = 372
@@ -29,19 +22,19 @@ warmupepochs = 0
 earlystop = False
 earlystopPatience = 15
 optimizer = 'SGD'
-optimizerparams = {'momentum': 0.9, 'weight_decay': 5e-5}
+optimizerparams = {'momentum': 0.9, 'weight_decay': 1e-4}
 number_workers = 1
-modeltype = 'WideResNet_28_4'
+modeltype = 'WideResNet_28_10'
 modelparams = {'dropout_rate': 0.1}
 resize = False
 aug_strat_check = True
 train_aug_strat = 'TrivialAugmentWide' #TrivialAugmentWide, RandAugment, AutoAugment, AugMix
 loss_function = 'ce' #'ce', 'jsd'
 lossparams = {'num_splits': 3, 'alpha': 12, 'smoothing': 0.1}
-mixup = {'alpha': 0.2, 'p': 1.0} #default alpha 0.2 #If both mixup and cutmix are >0, mixup or cutmix are selected by 0.5 chance
-cutmix = {'alpha': 1.0, 'p': 1.0} # default alpha 1.0 #If both mixup and cutmix are >0, mixup or cutmix are selected by 0.5 chance
-manifold = {'apply': True, 'noise_factor': 1}
-RandomEraseProbability = 0.0
+mixup_alpha = 0.2 #default 0.2 #If both mixup and cutmix are >0, mixup or cutmix are selected by 0.5 chance
+cutmix_alpha = 1.0 # default 1.0 #If both mixup and cutmix are >0, mixup or cutmix are selected by 0.5 chance
+mixup_manifold = True
+RandomEraseProbability = 0.1
 
 #define train and test corruptions:
 #define noise type (first column): 'gaussian', 'uniform-l0-impulse', 'uniform-l0-salt-pepper', 'uniform-linf'. also: all positive numbers p>0 for uniform Lp possible: 'uniform-l1', 'uniform-l2', ...

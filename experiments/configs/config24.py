@@ -16,7 +16,7 @@ combine_train_corruptions = True #augment the train dataset with all corruptions
 concurrent_combinations = 1 #only has an effect if combine_train_corruption is True
 
 batchsize = 512
-minibatchsize = 8
+minibatchsize = 16
 dataset = 'CIFAR100' #ImageNet #CIFAR100 #CIFAR10 #TinyImageNet
 normalize = True
 validontest = True
@@ -31,7 +31,7 @@ earlystopPatience = 15
 optimizer = 'SGD'
 optimizerparams = {'momentum': 0.9, 'weight_decay': 5e-5}
 number_workers = 1
-modeltype = 'WideResNet_28_4'
+modeltype = 'WideResNet_28_10'
 modelparams = {'dropout_rate': 0.1}
 resize = False
 aug_strat_check = True

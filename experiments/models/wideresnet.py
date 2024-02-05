@@ -75,10 +75,11 @@ class Bottleneck(nn.Module):
 
 class WideResNet(ct_model.CtModel):
     def __init__(self, depth, widen_factor, dataset, normalized, corruptions, dropout_rate=0.0, num_classes=10,
-                 factor=1, block=WideBasic, mixup_alpha=0.0, mixup_manifold=False, cutmix_alpha=0.0,
+                 factor=1, block=WideBasic, mixup={'alpha': 0.0, 'p': 0.0, 'manifold': False, 'manifold_factor': 1},
+                 manifold = {'apply': False, 'noise_factor': 4}, cutmix={'alpha': 0.0, 'p': 0.0}, random_erase_p = 0.0,
                  noise_minibatchsize=1, concurrent_combinations = 1):
         super(WideResNet, self).__init__(dataset=dataset, normalized=normalized, num_classes=num_classes,
-                                         mixup_alpha=mixup_alpha, mixup_manifold=mixup_manifold, cutmix_alpha=cutmix_alpha,
+                                         mixup=mixup, manifold = manifold, cutmix=cutmix, random_erase_p=random_erase_p,
                                          corruptions=corruptions, noise_minibatchsize=noise_minibatchsize,
                                          concurrent_combinations=concurrent_combinations)
         self.in_planes = 16
@@ -110,7 +111,9 @@ class WideResNet(ct_model.CtModel):
     def forward(self, x, targets):
         out = super(WideResNet, self).forward_normalize(x)
         out, mixed_targets = super(WideResNet, self).forward_noise_mixup(out, targets)
-        out = F.relu(self.bn1(out))
+        out = self.bn1(out)
+        #print(out.std())
+        out = F.relu(out)
         out = F.avg_pool2d(out, 8)
         out = out.view(out.size(0), -1)
         out = self.linear(out)
@@ -118,36 +121,46 @@ class WideResNet(ct_model.CtModel):
         return out, mixed_targets
 
 def WideResNet_28_2(num_classes, factor, dataset, normalized, corruptions, block=WideBasic, dropout_rate=0.0,
-                    mixup_alpha=0.0, mixup_manifold=False, cutmix_alpha=0.0, noise_minibatchsize=1, concurrent_combinations=1):
+                     mixup={'alpha': 0.0, 'p': 0.0, 'manifold': False, 'manifold_factor': 1},
+                     manifold = {'apply': False, 'noise_factor': 4}, cutmix={'alpha': 0.0, 'p': 0.0},
+                     random_erase_p=0.0, noise_minibatchsize=1, concurrent_combinations=1):
     return WideResNet(depth=28, widen_factor=2, dataset=dataset, normalized=normalized, dropout_rate=dropout_rate,
-                      num_classes=num_classes, factor=factor, block=block, mixup_alpha=mixup_alpha,
-                      mixup_manifold=mixup_manifold, cutmix_alpha=cutmix_alpha, corruptions=corruptions,
+                      num_classes=num_classes, factor=factor, block=block, mixup=mixup, manifold=manifold,
+                      cutmix=cutmix, random_erase_p = random_erase_p, corruptions=corruptions,
                       noise_minibatchsize=noise_minibatchsize, concurrent_combinations=concurrent_combinations)
 
 def WideResNet_28_4(num_classes, factor, dataset, normalized, corruptions, block=WideBasic, dropout_rate=0.0,
-                    mixup_alpha=0.0, mixup_manifold=False, cutmix_alpha=0.0, noise_minibatchsize=1, concurrent_combinations=1):
+                     mixup={'alpha': 0.0, 'p': 0.0, 'manifold': False, 'manifold_factor': 1},
+                     manifold = {'apply': False, 'noise_factor': 4}, cutmix={'alpha': 0.0, 'p': 0.0},
+                    random_erase_p=0.0, noise_minibatchsize=1, concurrent_combinations=1):
     return WideResNet(depth=28, widen_factor=4, dataset=dataset, normalized=normalized, dropout_rate=dropout_rate,
-                      num_classes=num_classes, factor=factor, block=block, mixup_alpha=mixup_alpha,
-                      mixup_manifold=mixup_manifold, cutmix_alpha=cutmix_alpha, corruptions=corruptions,
+                      num_classes=num_classes, factor=factor, block=block, mixup=mixup, manifold=manifold,
+                      cutmix=cutmix, random_erase_p = random_erase_p, corruptions=corruptions,
                       noise_minibatchsize=noise_minibatchsize, concurrent_combinations=concurrent_combinations)
 
 def WideResNet_28_10(num_classes, factor, dataset, normalized, corruptions, block=WideBasic, dropout_rate=0.0,
-                    mixup_alpha=0.0, mixup_manifold=False, cutmix_alpha=0.0, noise_minibatchsize=1, concurrent_combinations=1):
+                     mixup={'alpha': 0.0, 'p': 0.0, 'manifold': False, 'manifold_factor': 1},
+                     manifold = {'apply': False, 'noise_factor': 4}, cutmix={'alpha': 0.0, 'p': 0.0},
+                     random_erase_p=0.0, noise_minibatchsize=1, concurrent_combinations=1):
     return WideResNet(depth=28, widen_factor=10, dataset=dataset, normalized=normalized, dropout_rate=dropout_rate,
-                      num_classes=num_classes, factor=factor, block=block, mixup_alpha=mixup_alpha,
-                      mixup_manifold=mixup_manifold, cutmix_alpha=cutmix_alpha, corruptions=corruptions,
+                      num_classes=num_classes, factor=factor, block=block, mixup=mixup, manifold=manifold,
+                      cutmix=cutmix, random_erase_p = random_erase_p, corruptions=corruptions,
                       noise_minibatchsize=noise_minibatchsize, concurrent_combinations=concurrent_combinations)
 
 def WideResNet_28_12(num_classes, factor, dataset, normalized, corruptions, block=WideBasic, dropout_rate=0.0,
-                    mixup_alpha=0.0, mixup_manifold=False, cutmix_alpha=0.0, noise_minibatchsize=1, concurrent_combinations=1):
+                     mixup={'alpha': 0.0, 'p': 0.0, 'manifold': False, 'manifold_factor': 1},
+                     manifold = {'apply': False, 'noise_factor': 4}, cutmix={'alpha': 0.0, 'p': 0.0},
+                     random_erase_p=0.0, noise_minibatchsize=1, concurrent_combinations=1):
     return WideResNet(depth=28, widen_factor=12, dataset=dataset, normalized=normalized, dropout_rate=dropout_rate,
-                      num_classes=num_classes, factor=factor, block=block, mixup_alpha=mixup_alpha,
-                      mixup_manifold=mixup_manifold, cutmix_alpha=cutmix_alpha, corruptions=corruptions,
+                      num_classes=num_classes, factor=factor, block=block, mixup=mixup, manifold=manifold,
+                      cutmix=cutmix, random_erase_p = random_erase_p, corruptions=corruptions,
                       noise_minibatchsize=noise_minibatchsize, concurrent_combinations=concurrent_combinations)
 
 def WideResNet_40_10(num_classes, factor, dataset, normalized, corruptions, block=WideBasic, dropout_rate=0.0,
-                    mixup_alpha=0.0, mixup_manifold=False, cutmix_alpha=0.0, noise_minibatchsize=1, concurrent_combinations=1):
+                     mixup={'alpha': 0.0, 'p': 0.0, 'manifold': False, 'manifold_factor': 1},
+                     manifold = {'apply': False, 'noise_factor': 4}, cutmix={'alpha': 0.0, 'p': 0.0},
+                     random_erase_p=0.0, noise_minibatchsize=1, concurrent_combinations=1):
     return WideResNet(depth=40, widen_factor=10, dataset=dataset, normalized=normalized, dropout_rate=dropout_rate,
-                      num_classes=num_classes, factor=factor, block=block, mixup_alpha=mixup_alpha,
-                      mixup_manifold=mixup_manifold, cutmix_alpha=cutmix_alpha, corruptions=corruptions,
+                      num_classes=num_classes, factor=factor, block=block, mixup=mixup, manifold=manifold,
+                      cutmix=cutmix, random_erase_p = random_erase_p, corruptions=corruptions,
                       noise_minibatchsize=noise_minibatchsize, concurrent_combinations=concurrent_combinations)

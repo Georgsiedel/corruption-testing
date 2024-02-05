@@ -50,76 +50,49 @@ class Noise_Sampler(torch.nn.Module):
 
             return batch
 
-def apply_lp_corruption(batch, minibatchsize, corruptions, concurrent_combinations, normalized, dataset):
-    #if manifold_layer == 0:
-    if normalized:
-        mean, std = normalization_values(dataset)
-        mean = mean.to(device)
-        std = std.to(device)
-    else:
-        mean = 0
-        std = 1
-    #if manifold_layer >= 1:
-
-        # max_numbers = torch.full(size=batch.size(), fill_value=batch.max(), device=device)
-        # min_numbers = torch.full(size=batch.size(), fill_value=batch.min(), device=device)
-
-    #    if normalized:
-    #        std = 1 / (batch.max() - batch.min())
-    #        max_value = batch.max()
-    #        min_value = batch.min()
-    #elif normalized and manifold_layer >= 1:
-    #    std = 1 / (batch.max() - batch.min())
-    #    max_value = batch.max()
-    #    min_value = batch.min()
-    #else:
-    #    mean = 0
-    #    std = 1
-
+def apply_lp_corruption(batch, minibatchsize, corruptions, concurrent_combinations, normalized, dataset, manifold=False, manifold_factor=1):
+    #Calculate the mean values for each channel across all images
+    mean, std = normalization_values(batch, dataset, normalized, manifold, manifold_factor)
+    #Throw out p-norm corruptions outside L0 and Linf for manifold noise (since epsilon is highly dependent on dimensionality)
+    if manifold:
+        if not isinstance(corruptions, dict):
+            corruptions = [c for c in corruptions if c.get('noise_type') in {'gaussian', 'uniform-linf', 'uniform-l0-impulse', 'standard'}]
+            corruptions = np.array(corruptions)
+        else:
+            if corruptions.get('noise_type') != ('gaussian' or 'uniform-linf' or 'uniform-l0-impulse' or 'standard'):
+                print('Warning: noise_type of p-norm outside L0 and Linf may not be applicable for manifold noise')
     minibatches = batch.view(-1, minibatchsize, batch.size()[1], batch.size()[2], batch.size()[3])
+
     for id, minibatch in enumerate(minibatches):
 
+        #no dict means corruption combination, so we choose randomly, dict means one single corruption
         if not isinstance(corruptions, dict): #in case of a combination of corruptions (combined_corruption = True)
             corruptions_list = random.sample(list(corruptions), k=concurrent_combinations)
-            for x, (corruption) in enumerate(corruptions_list):
-                if corruption['distribution'] == 'uniform':
-                    d = dist.Uniform(0, 1).sample()
-                elif corruption['distribution'] == 'beta2-5':
-                    d = np.random.beta(2, 5)
-                elif corruption['distribution'] == 'max':
-                    d = 1
-                else:
-                    print('Unknown distribution for epsilon value of p-norm corruption. '
-                          'Chose max-distribution instead, where epsilon is always equal to given epsilon.')
-                    d = 1
-                if d == 0: #dist sampling include lower bound but exclude upper, but we do not want eps = 0
-                    d = 1
-                epsilon = float(d) * float(corruption['epsilon'])
-                minibatch = sample_lp_corr_batch(corruption['noise_type'], epsilon, minibatch, corruption['sphere'], mean, std)
+        else:
+            corruptions_list = [corruptions]
 
-        else: # in this case we have a single corruption (combined_corruption = False) parsed to the train module
-            if corruptions['distribution'] == 'uniform':
-                d = dist.Uniform(0, 1)
-            elif corruptions['distribution'] == 'beta2-5':
+        for _, (corruption) in enumerate(corruptions_list):
+            if corruption['distribution'] == 'uniform':
+                d = dist.Uniform(0, 1).sample()
+            elif corruption['distribution'] == 'beta2-5':
                 d = np.random.beta(2, 5)
-            elif corruptions['distribution'] == 'max':
+            elif corruption['distribution'] == 'max':
                 d = 1
             else:
-                print('Unknown distribution for epsilon value of p-norm corruption.'
+                print('Unknown distribution for epsilon value of p-norm corruption. '
                       'Chose max-distribution instead, where epsilon is always equal to given epsilon.')
                 d = 1
             if d == 0: #dist sampling include lower bound but exclude upper, but we do not want eps = 0
                 d = 1
-
-            epsilon = d * float(corruptions['epsilon'])
-            minibatch = sample_lp_corr_batch(corruptions['noise_type'], epsilon, minibatch, corruptions['sphere'], mean, std)
+            epsilon = float(d) * float(corruption['epsilon'])
+            minibatch = sample_lp_corr_batch(corruption['noise_type'], epsilon, minibatch, corruption['sphere'], mean, std, manifold)
 
         minibatches[id] = minibatch
 
     batch = minibatches.view(-1, batch.size()[1], batch.size()[2], batch.size()[3])
     return batch
 
-def sample_lp_corr_batch(noise_type, epsilon, batch, density_distribution_max, mean, std):
+def sample_lp_corr_batch(noise_type, epsilon, batch, density_distribution_max, mean, std, manifold):
     with torch.cuda.device(0):
         corruption = torch.zeros(batch.size(), dtype=torch.float16)
 
@@ -133,7 +106,8 @@ def sample_lp_corr_batch(noise_type, epsilon, batch, density_distribution_max, m
         elif noise_type == 'gaussian': #note that this has no option for density_distribution=max
             corruption = torch.cuda.FloatTensor(batch.shape).normal_(0, epsilon)
         elif noise_type == 'uniform-l0-impulse':
-            num_pixels = int(batch[0].numel() * epsilon)
+            num_dimensions = torch.numel(batch[0])
+            num_pixels = int(num_dimensions * epsilon)
             lower_bounds = torch.arange(0, batch.size(0) * batch[0].numel(), batch[0].numel(), device=device)
             upper_bounds = torch.arange(batch[0].numel(), (batch.size(0) + 1) * batch[0].numel(), batch[0].numel(), device=device)
             indices = torch.cat([torch.randint(l, u, (num_pixels,), device=device) for l, u in zip(lower_bounds, upper_bounds)])
@@ -141,14 +115,11 @@ def sample_lp_corr_batch(noise_type, epsilon, batch, density_distribution_max, m
             mask.view(-1)[indices] = True
             if density_distribution_max == True:
                 random_numbers = torch.randint(2, size=batch.size(), dtype=torch.float16, device=device)
-                #max_numbers = torch.full(size=batch.size(), fill_value=batch.max(), device=device)
-                #min_numbers = torch.full(size=batch.size(), fill_value=batch.min(), device=device)
-
-                #random_numbers = torch.cuda.FloatTensor(batch.shape).uniform_(batch.min(), batch.max())
-                #random_numbers = torch.where(random_numbers > (batch.max() + batch.min()) / 2, batch.max(), batch.min())
             else:
                 random_numbers = torch.cuda.FloatTensor(batch.shape).uniform_(0, 1)
-                #random_numbers = torch.cuda.FloatTensor(batch.shape).uniform_(batch.min(), batch.max())
+            if manifold:
+                random_numbers = random_numbers - 0.5
+
             random_numbers = (random_numbers - mean) / std
             batch_corr = torch.where(mask, random_numbers, batch)
             return batch_corr
@@ -176,10 +147,10 @@ def sample_lp_corr_batch(noise_type, epsilon, batch, density_distribution_max, m
             print('Unknown type of noise')
 
         corruption = corruption.to(device)
-        corruption = corruption / std
-        batch_corr = batch + corruption
-        #batch_corr = torch.clamp(batch_corr, (0-mean)/std, (1-mean)/std)  #clip below lower and above upper bound
-        return batch_corr
+        corrupted_batch = batch + (corruption / std)
+        if not manifold:
+            corrupted_batch = torch.clamp(corrupted_batch, (0-mean)/std, (1-mean)/std)  #clip below lower and above upper bound
+        return corrupted_batch
 
 def sample_lp_corr_img(noise_type, epsilon, img, density_distribution_max):
     d = len(img.ravel())
