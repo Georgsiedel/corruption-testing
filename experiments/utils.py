@@ -41,7 +41,8 @@ def get_criterion(loss_function, lossparams):
         criterion, robust_samples = JsdCrossEntropy(**lossparams), lossparams["num_splits"] - 1
     else:
         criterion, robust_samples = torch.nn.CrossEntropyLoss(label_smoothing=lossparams["smoothing"]), 0
-    return criterion, robust_samples
+    test_criterion = torch.nn.CrossEntropyLoss()
+    return criterion, test_criterion, robust_samples
 
 def create_report(avg_test_metrics, max_test_metrics, std_test_metrics, train_corruptions, test_corruptions,
                 combine_train_corruptions, combine_test_corruptions, dataset, modeltype, lrschedule, experiment,

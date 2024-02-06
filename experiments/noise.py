@@ -50,21 +50,26 @@ class Noise_Sampler(torch.nn.Module):
 
             return batch
 
-def apply_lp_corruption(batch, minibatchsize, corruptions, concurrent_combinations, normalized, dataset, manifold=False, manifold_factor=1):
+def apply_lp_corruption(batch, minibatchsize, corruptions, concurrent_combinations, normalized, dataset,
+                        manifold=False, manifold_factor=1):
+
     #Calculate the mean values for each channel across all images
     mean, std = normalization_values(batch, dataset, normalized, manifold, manifold_factor)
-    #Throw out p-norm corruptions outside L0 and Linf for manifold noise (since epsilon is highly dependent on dimensionality)
+
+    #Throw out noise outside Gaussian, L0 and Linf for manifold noise (since epsilon is highly dependent on dimensionality)
     if manifold:
         if not isinstance(corruptions, dict):
             corruptions = [c for c in corruptions if c.get('noise_type') in {'gaussian', 'uniform-linf', 'uniform-l0-impulse', 'standard'}]
             corruptions = np.array(corruptions)
+            if corruptions.size == 0:
+                print('Warning: noise_type of p-norm outside L0 and Linf may not be applicable for manifold noise')
         else:
             if corruptions.get('noise_type') != ('gaussian' or 'uniform-linf' or 'uniform-l0-impulse' or 'standard'):
                 print('Warning: noise_type of p-norm outside L0 and Linf may not be applicable for manifold noise')
+
     minibatches = batch.view(-1, minibatchsize, batch.size()[1], batch.size()[2], batch.size()[3])
 
     for id, minibatch in enumerate(minibatches):
-
         #no dict means corruption combination, so we choose randomly, dict means one single corruption
         if not isinstance(corruptions, dict): #in case of a combination of corruptions (combined_corruption = True)
             corruptions_list = random.sample(list(corruptions), k=concurrent_combinations)

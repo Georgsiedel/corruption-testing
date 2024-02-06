@@ -52,8 +52,7 @@ def eval_metric(modelfilename, test_corruptions, combine_test_corruptions, test_
     if dataset == 'CIFAR10' or 'CIFAR100' or 'TinyImageNet':
         model_class = getattr(low_dim_models, modeltype)
         model = model_class(dataset = dataset, normalized = normalized, num_classes=num_classes, factor=pixel_factor,
-                            mixup = {'alpha': 0.0, 'p': 0.0}, manifold={'apply': False, 'noise_factor': 1}, cutmix={'alpha': 0.0, 'p': 0.0},
-                            random_erase_p = 0.0, corruptions=None, **modelparams)
+                            **modelparams)
     else:
         model_class = getattr(torchmodels, modeltype)
         model = model_class(num_classes = num_classes, **modelparams)

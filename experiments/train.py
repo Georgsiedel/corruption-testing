@@ -133,7 +133,10 @@ def train_epoch(pbar):
 
         inputs, targets = inputs.to(device, dtype=torch.float32), targets.to(device)
         with torch.cuda.amp.autocast():
-            outputs, mixed_targets = model(inputs, targets)
+            outputs, mixed_targets = model(inputs, targets, robust_samples, train_corruptions, args.mixup['alpha'],
+                                           args.mixup['p'], args.manifold['apply'], args.manifold['noise_factor'],
+                                           args.cutmix['alpha'], args.cutmix['p'], args.RandomEraseProbability,
+                                           args.minibatchsize, args.concurrent_combinations)
             loss = criterion(outputs, mixed_targets)
 
         scaler.scale(loss).backward()
@@ -148,7 +151,7 @@ def train_epoch(pbar):
         if np.ndim(mixed_targets) == 2:
             _, mixed_targets = mixed_targets.max(1)
         if robust_samples >= 1:
-            mixed_targets = torch.cat([mixed_targets] * robust_samples, 0)
+            mixed_targets = torch.cat([mixed_targets] * (robust_samples+1), 0)
         total += mixed_targets.size(0)
         correct += predicted.eq(mixed_targets).sum().item()
         avg_train_loss = train_loss / (batch_idx + 1)
@@ -170,7 +173,7 @@ def valid_epoch(pbar):
 
             with torch.cuda.amp.autocast():
                 outputs, targets = model(inputs, targets)
-                loss = criterion(outputs, targets)
+                loss = test_criterion(outputs, targets)
 
             test_loss += loss.item()
             _, predicted = outputs.max(1)
@@ -197,7 +200,7 @@ if __name__ == '__main__':
     # Load and transform data
     print('Preparing data..')
     transforms_preprocess, transforms_augmentation = data.create_transforms(args.dataset, args.aug_strat_check, args.train_aug_strat, args.resize, args.RandomEraseProbability)
-    criterion, robust_samples = utils.get_criterion(args.loss_function, args.lossparams)
+    criterion, test_criterion, robust_samples = utils.get_criterion(args.loss_function, args.lossparams)
     trainset, validset, testset, num_classes = data.load_data(transforms_preprocess, args.dataset, args.validontest, transforms_augmentation, run=args.run, robust_samples=robust_samples)
     testsets_c = data.load_data_c(args.dataset, testset, args.resize, transforms_preprocess, args.validonc, subsetsize=200)
     trainloader = DataLoader(trainset, batch_size=args.batchsize, shuffle=True, pin_memory=True, collate_fn=None, num_workers=args.number_workers)
@@ -208,10 +211,8 @@ if __name__ == '__main__':
           f' | Loss Function: {args.loss_function}')
     if args.dataset == 'CIFAR10' or 'CIFAR100' or 'TinyImageNet':
         model_class = getattr(low_dim_models, args.modeltype)
-        model = model_class(dataset=args.dataset, normalized =args.normalize, corruptions = train_corruptions, num_classes=num_classes,
-                            factor=args.pixel_factor, mixup= args.mixup, manifold = args.manifold, cutmix = args.cutmix,
-                            random_erase_p = args.RandomEraseProbability, noise_minibatchsize=args.minibatchsize,
-                            concurrent_combinations = args.concurrent_combinations, **args.modelparams)
+        model = model_class(dataset=args.dataset, normalized =args.normalize, num_classes=num_classes,
+                            factor=args.pixel_factor, **args.modelparams)
 
     else:
         model_class = getattr(torchmodels, args.modeltype)

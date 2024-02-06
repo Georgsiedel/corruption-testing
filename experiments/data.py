@@ -32,8 +32,31 @@ class CustomDataset(Dataset):
 
         return image, label
 
-def load_data(transforms_preprocess, dataset, validontest, transforms_augmentation = None, run=0, robust_samples=0):
 
+class AugmentedDataset(torch.utils.data.Dataset):
+  """Dataset wrapper to perform augmentations and allow robust loss functions."""
+
+  def __init__(self, dataset, transforms_preprocess, transforms_augmentation, robust_samples=0):
+    self.dataset = dataset
+    self.preprocess =  transforms_preprocess
+    self.augment = transforms_augmentation
+    self.robust_samples = robust_samples
+
+  def __getitem__(self, i):
+    x, y = self.dataset[i]
+    if self.robust_samples == 0:
+      return self.augment(x), y
+    elif self.robust_samples == 1:
+      im_tuple = (self.preprocess(x), self.augment(x))
+      return im_tuple, y
+    elif self.robust_samples == 2:
+      im_tuple = (self.preprocess(x), self.augment(x), self.augment(x))
+      return im_tuple, y
+
+  def __len__(self):
+    return len(self.dataset)
+
+def load_data(transforms_preprocess, dataset, validontest, transforms_augmentation = None, run=0, robust_samples=0):
 
     # Trainset
     if transforms_augmentation is not None:
@@ -202,26 +225,3 @@ def apply_augstrat(batch, train_aug_strat):
         batch[id] = img
 
     return batch
-
-class AugmentedDataset(torch.utils.data.Dataset):
-  """Dataset wrapper to perform augmentations and allow robust loss functions."""
-
-  def __init__(self, dataset, transforms_preprocess, transforms_augmentation, robust_samples=0):
-    self.dataset = dataset
-    self.preprocess =  transforms_preprocess
-    self.augment = transforms_augmentation
-    self.robust_samples = robust_samples
-
-  def __getitem__(self, i):
-    x, y = self.dataset[i]
-    if self.robust_samples == 0:
-      return self.augment(x), y
-    elif self.robust_samples == 1:
-      im_tuple = (self.preprocess(x), self.augment(x))
-      return im_tuple, y
-    elif self.robust_samples == 2:
-      im_tuple = (self.preprocess(x), self.augment(x), self.augment(x))
-      return im_tuple, y
-
-  def __len__(self):
-    return len(self.dataset)
