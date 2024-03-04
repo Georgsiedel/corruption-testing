@@ -71,9 +71,8 @@ def eval_metric(modelfilename, test_corruptions, combine_test_corruptions, test_
         accs_c = eval_corruptions.compute_c_corruptions(dataset, testsets_c, model, batchsize, num_classes, eval_run = False)
         accs = accs + accs_c
     if calculate_adv_distance == True: # adversarial distance calculation
-        adv_acc_high_iter_pgd, dst1, idx1, dst2, idx2 = eval_adversarial.compute_adv_distance(testset, workers, model, adv_distance_params)
-        mean_dist1, mean_dist2 = [np.asarray(torch.tensor(d).cpu()).mean() for d in [dst1, dst2]]
-        accs = accs + [adv_acc_high_iter_pgd, mean_dist1, mean_dist2]
+        adv_acc_high_iter_pgd, mean_dist1, mean_dist2, mean_clever_score = eval_adversarial.compute_adv_distance(testset, workers, model, adv_distance_params)
+        accs = accs + [adv_acc_high_iter_pgd, mean_dist1, mean_dist2, mean_clever_score]
     if calculate_autoattack_robustness == True: # adversarial accuracy calculation
         adv_acc_aa, mean_dist_aa = eval_adversarial.compute_adv_acc(autoattack_params, testset, model, workers, batchsize)
         accs = accs + [adv_acc_aa, mean_dist_aa]

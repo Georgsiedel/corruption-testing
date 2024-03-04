@@ -183,6 +183,6 @@ if combine_test_corruptions:
 else:
     test_count += test_corruptions.shape[0]
 if calculate_adv_distance:
-    test_count += 3
+    test_count += 4
 if calculate_autoattack_robustness:
     test_count += 2

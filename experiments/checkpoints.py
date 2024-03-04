@@ -6,6 +6,7 @@ class Checkpoint:
     """Early stops the training if validation loss doesn't improve after a given patience."""
     def __init__(self, earlystopping = False, patience=7, verbose=False, delta=0, trace_func=print,
                  model_path= 'experiments/trained_models/checkpoint.pt',
+                 swa_model_path='experiments/trained_models/swa_checkpoint.pt',
                  best_model_path = 'experiments/trained_models/best_checkpoint.pt'):
         """
         Args:
@@ -29,9 +30,10 @@ class Checkpoint:
         self.trace_func = trace_func
         self.earlystopping = earlystopping
         self.model_path = model_path
+        self.swa_model_path = swa_model_path
         self.best_model_path = best_model_path
 
-    def _earlystopping(self, val_acc, model):
+    def _earlystopping(self, val_acc):
 
         score = val_acc
 
@@ -50,8 +52,15 @@ class Checkpoint:
             self.counter = 0
             self.best_model = True
 
-    def _load_model(self, model, optimizer, scheduler, best=False):
-        checkpoint = torch.load(self.best_model_path) if best == True else torch.load(self.model_path)
+    def _load_model(self, model, optimizer, scheduler, path='checkpoint'):
+        if path == 'checkpoint':
+            checkpoint = torch.load(self.model_path)
+        elif path == 'best_checkpoint':
+            checkpoint = torch.load(self.best_model_path)
+        elif path == 'swa_checkpoint':
+            checkpoint = torch.load(self.swa_model_path)
+        else:
+            print('only swa_checkpoint, best_checkpoint or checkpoint can be loaded')
 
         model.load_state_dict(checkpoint['model_state_dict'])
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
@@ -75,6 +84,15 @@ class Checkpoint:
                 'optimizer_state_dict': optimizer.state_dict(),
                 'scheduler_state_dict': scheduler.state_dict(),
             }, self.best_model_path)
+
+    def _save_swa_checkpoint(self, swa_model, optimizer, swa_scheduler, epoch):
+
+        torch.save({
+            'epoch': epoch,
+            'model_state_dict': swa_model.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
+            'scheduler_state_dict': swa_scheduler.state_dict(),
+        }, self.swa_model_path)
 
     def _save_final_model(self, model, optimizer, scheduler, epoch, path):
         torch.save({

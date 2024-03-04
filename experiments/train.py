@@ -7,6 +7,7 @@ import shutil
 import torch.cuda.amp
 import torch.optim as optim
 from torch.utils.data import DataLoader
+from torch.optim.swa_utils import AveragedModel, SWALR
 import torchvision.models as torchmodels
 
 import experiments.data as data
@@ -111,7 +112,10 @@ parser.add_argument('--minibatchsize', default=8, type=int, help='batchsize, for
                     'corruption is applied for all images in the minibatch')
 parser.add_argument('--validonc', type=str2bool, nargs='?', const=False, default=False,
                     help='Whether to do a validation on a subset of c-data every epoch')
-
+parser.add_argument('--swa', type=str2bool, nargs='?', const=False, default=False,
+                    help='Whether to use stochastic weight averaging over the last epochs')
+parser.add_argument('--noise_sparsity', default=0.0, type=float,
+                    help='probability of not applying a calculated noise value to a dimension of an image')
 
 args = parser.parse_args()
 configname = (f'experiments.configs.config{args.experiment}')
@@ -136,7 +140,7 @@ def train_epoch(pbar):
             outputs, mixed_targets = model(inputs, targets, robust_samples, train_corruptions, args.mixup['alpha'],
                                            args.mixup['p'], args.manifold['apply'], args.manifold['noise_factor'],
                                            args.cutmix['alpha'], args.cutmix['p'], args.RandomEraseProbability,
-                                           args.minibatchsize, args.concurrent_combinations)
+                                           args.minibatchsize, args.concurrent_combinations, args.noise_sparsity)
             loss = criterion(outputs, mixed_targets)
 
         scaler.scale(loss).backward()
@@ -145,13 +149,14 @@ def train_epoch(pbar):
         scaler.step(optimizer)
         scaler.update()
         torch.cuda.synchronize()
-
         train_loss += loss.item()
+
         _, predicted = outputs.max(1)
         if np.ndim(mixed_targets) == 2:
             _, mixed_targets = mixed_targets.max(1)
         if robust_samples >= 1:
             mixed_targets = torch.cat([mixed_targets] * (robust_samples+1), 0)
+
         total += mixed_targets.size(0)
         correct += predicted.eq(mixed_targets).sum().item()
         avg_train_loss = train_loss / (batch_idx + 1)
@@ -162,8 +167,8 @@ def train_epoch(pbar):
     train_acc = 100. * correct / total
     return train_acc, avg_train_loss
 
-def valid_epoch(pbar):
-    model.eval()
+def valid_epoch(pbar, net):
+    net.eval()
     with torch.no_grad():
         test_loss, correct, total, avg_test_loss = 0, 0, 0, 0
 
@@ -172,7 +177,7 @@ def valid_epoch(pbar):
             inputs, targets = inputs.to(device, dtype=torch.float32), targets.to(device)
 
             with torch.cuda.amp.autocast():
-                outputs, targets = model(inputs, targets)
+                outputs, targets = net(inputs, targets)
                 loss = test_criterion(outputs, targets)
 
             test_loss += loss.item()
@@ -187,7 +192,7 @@ def valid_epoch(pbar):
 
         pbar.set_description(
             '[Valid] Robust Accuracy Calculation. Last Robust Accuracy: {:.3f}'.format(valid_accs_robust[-1] if valid_accs_robust else 0))
-        acc_c = compute_c_corruptions(args.dataset, testsets_c, model, batchsize=200,
+        acc_c = compute_c_corruptions(args.dataset, testsets_c, net, batchsize=200,
                                       num_classes=num_classes, eval_run = True)[0] if args.validonc == True else 0
         pbar.update(1)
 
@@ -227,14 +232,19 @@ if __name__ == '__main__':
     if args.warmupepochs > 0:
         warmupscheduler = optim.lr_scheduler.LinearLR(optimizer, start_factor=0.1, end_factor=1.0, total_iters=args.warmupepochs)
         scheduler = optim.lr_scheduler.SequentialLR(optimizer, schedulers=[warmupscheduler, scheduler], milestones=[args.warmupepochs])
+    if args.swa == True:
+        swa_model = AveragedModel(model)
+        swa_start = args.epochs * 0.9
+        swa_scheduler = SWALR(optimizer, anneal_strategy="linear", anneal_epochs=5, swa_lr=args.learningrate / 10)
     scaler = torch.cuda.amp.GradScaler()
     Checkpointer = checkpoints.Checkpoint(earlystopping=args.earlystop, patience=args.earlystopPatience, verbose=False,
                                           model_path='experiments/trained_models/checkpoint.pt',
+                                          swa_model_path='experiments/trained_models/swa_checkpoint.pt',
                                           best_model_path = 'experiments/trained_models/best_checkpoint.pt')
 
     # Some necessary parameters
     total_steps = utils.calculate_steps(args.dataset, args.batchsize, args.epochs, args.warmupepochs, args.validontest)
-    train_accs, train_losses, valid_accs, valid_losses, valid_accs_robust = [], [], [], [], []
+    train_accs, train_losses, valid_accs, valid_losses, valid_accs_robust, valid_accs_swa, valid_accs_robust_swa = [], [], [], [], [], [], []
     training_folder = 'combined' if args.combine_train_corruptions == True else 'separate'
     filename_spec = str(f"_{args.noise}_eps_{args.epsilon}_{args.max}_" if
                         args.combine_train_corruptions == False else f"_")
@@ -242,11 +252,13 @@ if __name__ == '__main__':
 
     # Resume from checkpoint
     if args.resume == True:
-        start_epoch, model, optimizer, scheduler = Checkpointer._load_model(model, optimizer, scheduler, best=False)
+        start_epoch, model, optimizer, scheduler = Checkpointer._load_model(model, optimizer, scheduler, 'checkpoint')
+        if args.swa == True:
+            start_epoch, swa_model, optimizer, scheduler = Checkpointer._load_model(swa_model, optimizer, scheduler, 'swa_checkpoint')
         print('\nResuming from checkpoint at epoch', start_epoch)
         # load prior learning curve values
-        train_accs, train_losses, valid_accs, valid_losses, valid_accs_robust = utils.load_learning_curves(args.dataset,
-                        args.modeltype, args.lrschedule, args.experiment, args.run, training_folder, filename_spec, args.validonc)
+        train_accs, train_losses, valid_accs, valid_losses, valid_accs_robust, valid_accs_swa, valid_accs_robust_swa = utils.load_learning_curves(args.dataset,
+                        args.modeltype, args.lrschedule, args.experiment, args.run, training_folder, filename_spec, args.validonc, args.swa)
 
     # Training loop
     with tqdm(total=total_steps) as pbar:
@@ -254,7 +266,7 @@ if __name__ == '__main__':
             # check_nan=True increases 32bit precision train time by ~20% and causes errors due to nan values for mixed precision training.
             for epoch in range(start_epoch, end_epoch):
                 train_acc, train_loss = train_epoch(pbar)
-                valid_acc, valid_loss, acc_c = valid_epoch(pbar)
+                valid_acc, valid_loss, acc_c = valid_epoch(pbar, model)
                 train_accs.append(train_acc)
                 valid_accs.append(valid_acc)
                 valid_accs_robust.append(acc_c)
@@ -263,19 +275,35 @@ if __name__ == '__main__':
 
                 if args.lrschedule == 'ReduceLROnPlateau':
                     scheduler.step(valid_loss)
+                elif args.swa == True and epoch > swa_start:
+                    swa_model.update_parameters(model)
+                    swa_scheduler.step()
+                    valid_acc_swa, valid_loss_swa, acc_c_swa = valid_epoch(pbar, swa_model)
                 else:
                     scheduler.step()
+                    valid_acc_swa, acc_c_swa = valid_acc, acc_c
+                valid_accs_swa.append(valid_acc_swa)
+                valid_accs_robust_swa.append(acc_c_swa)
+
                 # Check for best model, save model(s) and learning curve and check for earlystopping conditions
-                Checkpointer._earlystopping(valid_acc, model)
+                Checkpointer._earlystopping(valid_acc)
                 Checkpointer._save_checkpoint(model, optimizer, scheduler, epoch)
+                if args.swa == True:
+                    Checkpointer._save_swa_checkpoint(swa_model, optimizer, swa_scheduler, epoch)
                 utils.save_learning_curves(args.dataset, args.modeltype, args.lrschedule, args.experiment, args.run,
-                                           train_accs, valid_accs, valid_accs_robust, args.validonc, train_losses, valid_losses, training_folder, filename_spec)
+                                           train_accs, valid_accs, valid_accs_robust, valid_accs_swa,
+                                           valid_accs_robust_swa, args.swa, args.validonc, train_losses, valid_losses,
+                                           training_folder, filename_spec)
                 if Checkpointer.early_stop:
                     end_epoch = epoch
                     break
 
     # Save final model
-    end_epoch, model, optimizer, scheduler = Checkpointer._load_model(model, optimizer, scheduler, best=False)
+    if args.swa == True:
+        torch.optim.swa_utils.update_bn(trainloader, swa_model)
+        model = swa_model
+        valid_acc_swa, valid_loss_swa, acc_c_swa = valid_epoch(pbar, swa_model)
+        print(valid_acc_swa)
     Checkpointer._save_final_model(model, optimizer, scheduler, end_epoch, path = f'./experiments/trained_models/{args.dataset}'
                                                     f'/{args.modeltype}/config{args.experiment}_{args.lrschedule}_'
                                                     f'{training_folder}{filename_spec}run_{args.run}.pth')

@@ -7,10 +7,14 @@ import numpy as np
 from torch.utils.data import DataLoader
 from cleverhans.torch.attacks.projected_gradient_descent import projected_gradient_descent
 from autoattack import AutoAttack
+from art.estimators.classification import PyTorchClassifier
+from art.metrics import clever_u, clever_t
+import matplotlib.pyplot as plt
 
 def pgd_with_early_stopping(model, inputs, labels, clean_predicted, eps, number_iterations, epsilon_iters, norm):
 
     for i in range(number_iterations):
+        print(type(inputs))
         adv_inputs = projected_gradient_descent(model,
                                                 inputs,
                                                 eps=eps,
@@ -37,7 +41,7 @@ def adv_distance(testloader, model, number_iterations, epsilon, eps_iter, norm, 
     correct, total = 0, 0
     for i, (inputs, labels) in enumerate(testloader):
         inputs, labels = inputs.to(device), labels.to(device)
-        outputs = model(inputs)
+        outputs, targets = model(inputs)
         _, predicted = torch.max(outputs.data, 1)
 
         adv_inputs, adv_predicted = pgd_with_early_stopping(model, inputs, labels, predicted, epsilon, number_iterations, eps_iter, norm)
@@ -55,27 +59,78 @@ def adv_distance(testloader, model, number_iterations, epsilon, eps_iter, norm, 
         correct += (adv_predicted == labels).sum().item()
         total += labels.size(0)
         if (i+1) % 50 == 0:
-            adv_acc = correct / total
-            print(f"Completed: {i+1} of {setsize}, mean_distances: {sum(distance_list_1)/len(distance_list_1)}, {sum(distance_list_2)/len(distance_list_2)}, correct: {correct}, total: {total}, accuracy: {adv_acc * 100}%")
-
+            print(f"Completed: {i+1} of {setsize}, mean_distances: {sum(distance_list_1)/len(distance_list_1)}, {sum(distance_list_2)/len(distance_list_2)}, correct: {correct}, total: {total}, accuracy: {correct / total * 100}%")
+    adv_acc = correct / total
     return distance_list_1, image_idx_1, distance_list_2, image_idx_2, adv_acc
 
+def clever_score(testloader, model, clever_batches, clever_samples, epsilon, norm):
+
+    torch.cuda.empty_cache()
+    clever_scores = []
+    image_ids = []
+
+    # Iterate through each image for CLEVER score calculation
+    for batch_idx, (inputs, targets) in enumerate(testloader):
+        for id, input in enumerate(inputs):
+            clever_score = clever_u(model,
+                                    input,
+                                    nb_batches=clever_batches,
+                                    batch_size=clever_samples,
+                                    radius=epsilon,
+                                    norm=norm,
+                                    pool_factor=10)
+
+            # Append the calculated CLEVER score to the list
+            clever_scores.append(clever_score)
+            # Append the image ID to the list
+            image_ids.append(id)
+
+    return clever_scores, image_ids
+
 def compute_adv_distance(testset, workers, model, adv_distance_params):
-    print(f"{adv_distance_params['norm']}-Adversarial Distance calculation using PGD attack with "
-          f"{adv_distance_params['nb_iters']} iterations of stepsize {adv_distance_params['eps_iter']}")
+    epsilon = adv_distance_params["epsilon"]
+    eps_iter = adv_distance_params["eps_iter"]
+    nb_iters = adv_distance_params["nb_iters"]
+    norm = adv_distance_params["norm"]
+    clever_batches = adv_distance_params["clever_batches"]
+    clever_samples = adv_distance_params["clever_samples"]
+
+    print(f"{norm}-Adversarial Distance upper bound calculation using PGD attack with "
+          f"{nb_iters} iterations of stepsize {eps_iter}")
+
     truncated_testset, _ = torch.utils.data.random_split(testset,
                                                          [adv_distance_params["setsize"], len(testset)-adv_distance_params["setsize"]],
                                                          generator=torch.Generator().manual_seed(42))
     truncated_testloader = DataLoader(truncated_testset, batch_size=1, shuffle=False,
                                        pin_memory=True, num_workers=workers)
-    epsilon = adv_distance_params["epsilon"]
-    eps_iter = adv_distance_params["eps_iter"]
-    nb_iters = adv_distance_params["nb_iters"]
-    norm = adv_distance_params["norm"]
+
     dst1, idx1, dst2, idx2, adv_acc = adv_distance(testloader=truncated_testloader, model=model,
         number_iterations=nb_iters, epsilon=epsilon, eps_iter=eps_iter, norm=norm, setsize=adv_distance_params["setsize"])
+    mean_dist1, mean_dist2 = [np.asarray(torch.tensor(d).cpu()).mean() for d in [dst1, dst2]]
 
-    return adv_acc*100, dst1, idx1, dst2, idx2
+    adv_dist_list = np.array(dst2)
+    sorted_indices = np.argsort(adv_dist_list)
+    adv_distance_sorted = adv_dist_list[sorted_indices]
+
+    if adv_distance_params['clever'] == True:
+        print(f"{norm}-Adversarial Distance (statistical) lower bound calculation using Clever Score with "
+              f"{clever_batches} batches with {clever_samples} samples each.")
+        clever_scores, clever_id = clever_score(testloader=truncated_testloader, model=model, clever_batches=clever_batches,
+                             clever_samples=clever_samples, epsilon=epsilon, norm=norm)
+        clever_scores_sorted = clever_scores[sorted_indices]
+        mean_clever_score = np.asarray(torch.tensor(clever_scores).cpu()).mean()
+    else:
+        mean_clever_score = 0.0
+
+    plt.figure(figsize=(15, 5))
+    plt.scatter(range(len(adv_distance_sorted)), adv_distance_sorted, s=3, label="PGD Adversarial Distance")
+    if adv_distance_params['clever'] == True:
+        plt.scatter(range(len(clever_scores_sorted)), clever_scores_sorted, s=3, label="Clever Score")
+    plt.xlabel("Sorted Image ID")
+    plt.ylabel("Distance")
+    plt.legend()
+
+    return adv_acc*100, mean_dist1, mean_dist2, mean_clever_score
 
 def compute_adv_acc(autoattack_params, testset, model, workers, batchsize=50):
     print(f"{autoattack_params['norm']} Adversarial Accuracy calculation using AutoAttack attack "

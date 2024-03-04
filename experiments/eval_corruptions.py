@@ -14,7 +14,7 @@ def compute_p_corruptions(testloader, model, test_corruptions, normalized, datas
         for batch_idx, (inputs, targets) in enumerate(testloader):
 
             inputs, targets = inputs.to(device, dtype=torch.float), targets.to(device)
-            inputs_pert = apply_lp_corruption(inputs, 1, test_corruptions, 1, False, dataset, manifold=False)
+            inputs_pert = apply_lp_corruption(inputs, 1, test_corruptions, 1, False, dataset, manifold=False, sparsity=0.0)
 
             with torch.cuda.amp.autocast():
                 targets_pred, targets = model(inputs_pert, targets)

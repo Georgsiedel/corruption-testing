@@ -41,6 +41,7 @@ class AugmentedDataset(torch.utils.data.Dataset):
     self.preprocess =  transforms_preprocess
     self.augment = transforms_augmentation
     self.robust_samples = robust_samples
+    print(self.augment)
 
   def __getitem__(self, i):
     x, y = self.dataset[i]

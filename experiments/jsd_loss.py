@@ -13,7 +13,7 @@ class JsdCrossEntropy(nn.Module):
 
     Hacked together by / Copyright 2020 Ross Wightman
     """
-    def __init__(self, num_splits=3, alpha=12, smoothing=0.1):
+    def __init__(self, num_splits=3, alpha=12, smoothing=0.0):
         super().__init__()
         self.num_splits = num_splits
         self.alpha = alpha

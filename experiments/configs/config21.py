@@ -15,14 +15,14 @@ train_corruptions = np.array([
 combine_train_corruptions = True #augment the train dataset with all corruptions
 concurrent_combinations = 1 #only has an effect if combine_train_corruption is True
 
-batchsize = 512
-minibatchsize = 16
+batchsize = 256
+minibatchsize = 8
 dataset = 'CIFAR100' #ImageNet #CIFAR100 #CIFAR10 #TinyImageNet
 normalize = True
 validontest = True
 validonc = True
 lrschedule = 'CosineAnnealingWarmRestarts'
-learningrate = 0.15
+learningrate = 0.2
 epochs = 372
 lrparams = {'T_0': 12, 'T_mult': 2}
 warmupepochs = 0
@@ -31,17 +31,19 @@ earlystopPatience = 15
 optimizer = 'SGD'
 optimizerparams = {'momentum': 0.9, 'weight_decay': 5e-5}
 number_workers = 1
-modeltype = 'WideResNet_28_10'
-modelparams = {'dropout_rate': 0.1}
+modeltype = 'WideResNet_28_4'
+modelparams = {'dropout_rate': 0.1, 'activation_function': 'silu'}
 resize = False
 aug_strat_check = True
 train_aug_strat = 'TrivialAugmentWide' #TrivialAugmentWide, RandAugment, AutoAugment, AugMix
-loss_function = 'ce' #'ce', 'jsd'
-lossparams = {'num_splits': 3, 'alpha': 12, 'smoothing': 0.1}
+loss_function = 'jsd' #'ce', 'jsd'
+lossparams = {'num_splits': 3, 'alpha': 6, 'smoothing': 0.1}
 mixup = {'alpha': 0.2, 'p': 1.0} #default alpha 0.2 #If both mixup and cutmix are >0, mixup or cutmix are selected by 0.5 chance
-cutmix = {'alpha': 1.0, 'p': 0.0} # default alpha 1.0 #If both mixup and cutmix are >0, mixup or cutmix are selected by 0.5 chance
-manifold = {'apply': True, 'noise_factor': 4}
+cutmix = {'alpha': 1.0, 'p': 1.0} # default alpha 1.0 #If both mixup and cutmix are >0, mixup or cutmix are selected by 0.5 chance
+manifold = {'apply': True, 'noise_factor': 2}
 RandomEraseProbability = 0.0
+swa = False
+
 
 #define train and test corruptions:
 #define noise type (first column): 'gaussian', 'uniform-l0-impulse', 'uniform-l0-salt-pepper', 'uniform-linf'. also: all positive numbers p>0 for uniform Lp possible: 'uniform-l1', 'uniform-l2', ...
@@ -183,6 +185,6 @@ if combine_test_corruptions:
 else:
     test_count += test_corruptions.shape[0]
 if calculate_adv_distance:
-    test_count += 3
+    test_count += 4
 if calculate_autoattack_robustness:
     test_count += 2

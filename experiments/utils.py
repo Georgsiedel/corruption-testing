@@ -16,7 +16,6 @@ def plot_images(images, corrupted_images, number):
         corrupted_image = corrupted_image.permute(1, 2, 0)
         axs[i, 1].imshow(corrupted_image)
     #return fig
-
     plt.show()
 
 def calculate_steps(dataset, batchsize, epochs, warmupepochs, validontest):
@@ -64,8 +63,9 @@ def create_report(avg_test_metrics, max_test_metrics, std_test_metrics, train_co
 
     if calculate_adv_distance == True:
         test_corruptions_string = np.append(test_corruptions_string, ['Acc_from_PGD_adv_distance_calculation',
-                                                                      'Mean_adv_distance_with_misclassified_images_0)',
-                                                                      'Mean_adv_distance_misclassified-images_not_included)'],
+                                                                      'Mean_PGD_adv_distance_with_misclassified_images_0)',
+                                                                      'Mean_PGD_adv_distance_misclassified-images_not_included)',
+                                                                      'Mean_CLEVER_score'],
                                             axis=0)
     if calculate_autoattack_robustness == True:
         test_corruptions_string = np.append(test_corruptions_string,
@@ -91,24 +91,27 @@ def create_report(avg_test_metrics, max_test_metrics, std_test_metrics, train_co
                                 f'metrics_test_std.csv', index=True, header=True,
                                 sep=';', float_format='%1.4f', decimal=',')
 
-def save_learning_curves(dataset, modeltype, lrschedule, experiment, run, train_accs, valid_accs, valid_accs_robust, validonc,
-                    train_losses, valid_losses, training_folder, filename_spec):
+def save_learning_curves(dataset, modeltype, lrschedule, experiment, run, train_accs, valid_accs, valid_accs_robust,
+                         valid_accs_swa, valid_accs_robust_swa, swa, validonc, train_losses, valid_losses, training_folder,
+                         filename_spec):
 
-
-    if validonc == False:
-        learning_curve_frame = pd.DataFrame({"train_accuracy": train_accs, "train_loss": train_losses,
+    learning_curve_frame = pd.DataFrame({"train_accuracy": train_accs, "train_loss": train_losses,
                                              "valid_accuracy": valid_accs, "valid_loss": valid_losses})
+    if validonc == True:
+        learning_curve_frame.insert(4, "valid_accuracy_robust", valid_accs_robust)
+    if swa == True:
+        learning_curve_frame.insert(5, "valid_accuracy_swa", valid_accs_swa)
+        learning_curve_frame.insert(6, "valid_accuracy_robust_swa", valid_accs_robust_swa)
 
-    else:
-        learning_curve_frame = pd.DataFrame({"train_accuracy": train_accs, "train_loss": train_losses,
-                                         "valid_accuracy": valid_accs, "valid_loss": valid_losses,
-                                         "valid_accuracy_robust": valid_accs_robust})
     x = list(range(1, len(train_accs) + 1))
     plt.figure()
     plt.plot(x, train_accs, label='Train Accuracy')
     plt.plot(x, valid_accs, label='Validation Accuracy')
     if validonc == True:
         plt.plot(x, valid_accs_robust, label='Robust Validation Accuracy')
+    if swa == True:
+        plt.plot(x, valid_accs_swa, label='SWA Validation Accuracy')
+        plt.plot(x, valid_accs_robust_swa, label='SWA Robust Validation Accuracy')
     plt.title('Training and Validation Accuracy')
     plt.xlabel('Epochs')
     plt.ylabel('Accuracy')
@@ -122,7 +125,7 @@ def save_learning_curves(dataset, modeltype, lrschedule, experiment, run, train_
                 f'{filename_spec}run_{run}.svg')
     plt.close()
 
-def load_learning_curves(dataset, modeltype, lrschedule, experiment, run, training_folder, filename_spec, validonc):
+def load_learning_curves(dataset, modeltype, lrschedule, experiment, run, training_folder, filename_spec, validonc, swa):
     learning_curve_frame = pd.read_csv(f'./results/{dataset}/{modeltype}/config{experiment}_{lrschedule}_{training_folder}'
                                 f'_learning_curve{filename_spec}run_{run}.csv', sep=';', decimal=',')
     train_accuracy = learning_curve_frame.iloc[:, 0].values.tolist()
@@ -134,4 +137,11 @@ def load_learning_curves(dataset, modeltype, lrschedule, experiment, run, traini
     else:
         valid_accuracy_robust = []
 
-    return train_accuracy, train_loss, valid_accuracy, valid_loss, valid_accuracy_robust
+    if swa == True:
+        valid_accuracy_swa = learning_curve_frame.iloc[:, 5].values.tolist()
+        valid_accuracy_robust_swa = learning_curve_frame.iloc[:, 6].values.tolist()
+    else:
+        valid_accuracy_swa = []
+        valid_accuracy_robust_swa = []
+
+    return train_accuracy, train_loss, valid_accuracy, valid_loss, valid_accuracy_robust, valid_accuracy_swa, valid_accuracy_robust_swa

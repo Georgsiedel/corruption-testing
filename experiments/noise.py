@@ -51,20 +51,20 @@ class Noise_Sampler(torch.nn.Module):
             return batch
 
 def apply_lp_corruption(batch, minibatchsize, corruptions, concurrent_combinations, normalized, dataset,
-                        manifold=False, manifold_factor=1):
+                        manifold=False, manifold_factor=1, sparsity=0.0):
 
     #Calculate the mean values for each channel across all images
     mean, std = normalization_values(batch, dataset, normalized, manifold, manifold_factor)
 
-    #Throw out noise outside Gaussian, L0 and Linf for manifold noise (since epsilon is highly dependent on dimensionality)
+    #Throw out noise outside Gaussian, (L0) and Linf for manifold noise (since epsilon is highly dependent on dimensionality)
     if manifold:
         if not isinstance(corruptions, dict):
-            corruptions = [c for c in corruptions if c.get('noise_type') in {'gaussian', 'uniform-linf', 'uniform-l0-impulse', 'standard'}]
+            corruptions = [c for c in corruptions if c.get('noise_type') in {'gaussian', 'uniform-linf', 'standard'}] #, 'uniform-l0-impulse'
             corruptions = np.array(corruptions)
             if corruptions.size == 0:
                 print('Warning: noise_type of p-norm outside L0 and Linf may not be applicable for manifold noise')
         else:
-            if corruptions.get('noise_type') != ('gaussian' or 'uniform-linf' or 'uniform-l0-impulse' or 'standard'):
+            if corruptions.get('noise_type') != ('gaussian' or 'uniform-linf' or 'standard'): #or 'uniform-l0-impulse'
                 print('Warning: noise_type of p-norm outside L0 and Linf may not be applicable for manifold noise')
 
     minibatches = batch.view(-1, minibatchsize, batch.size()[1], batch.size()[2], batch.size()[3])
@@ -90,14 +90,14 @@ def apply_lp_corruption(batch, minibatchsize, corruptions, concurrent_combinatio
             if d == 0: #dist sampling include lower bound but exclude upper, but we do not want eps = 0
                 d = 1
             epsilon = float(d) * float(corruption['epsilon'])
-            minibatch = sample_lp_corr_batch(corruption['noise_type'], epsilon, minibatch, corruption['sphere'], mean, std, manifold)
+            minibatch = sample_lp_corr_batch(corruption['noise_type'], epsilon, minibatch, corruption['sphere'], mean, std, manifold, sparsity)
 
         minibatches[id] = minibatch
 
     batch = minibatches.view(-1, batch.size()[1], batch.size()[2], batch.size()[3])
     return batch
 
-def sample_lp_corr_batch(noise_type, epsilon, batch, density_distribution_max, mean, std, manifold):
+def sample_lp_corr_batch(noise_type, epsilon, batch, density_distribution_max, mean, std, manifold, sparsity=0.0):
     with torch.cuda.device(0):
         corruption = torch.zeros(batch.size(), dtype=torch.float16)
 
@@ -118,6 +118,10 @@ def sample_lp_corr_batch(noise_type, epsilon, batch, density_distribution_max, m
             indices = torch.cat([torch.randint(l, u, (num_pixels,), device=device) for l, u in zip(lower_bounds, upper_bounds)])
             mask = torch.full(batch.size(), False, dtype=torch.bool, device=device)
             mask.view(-1)[indices] = True
+            #apply sparsity: a share of the random impulse noise pixels is left out
+            sparse_matrix = torch.cuda.FloatTensor(batch.shape).uniform_()
+            mask[sparse_matrix < sparsity] = False
+
             if density_distribution_max == True:
                 random_numbers = torch.randint(2, size=batch.size(), dtype=torch.float16, device=device)
             else:
@@ -125,8 +129,10 @@ def sample_lp_corr_batch(noise_type, epsilon, batch, density_distribution_max, m
             if manifold:
                 random_numbers = random_numbers - 0.5
 
+            #normalizing the impulse noise values
             random_numbers = (random_numbers - mean) / std
             batch_corr = torch.where(mask, random_numbers, batch)
+
             return batch_corr
 
         elif 'uniform-l' in noise_type:  #Calafiore1998: Uniform Sample Generation in lp Balls for Probabilistic Robustness Analysis
@@ -151,7 +157,11 @@ def sample_lp_corr_batch(noise_type, epsilon, batch, density_distribution_max, m
         else:
             print('Unknown type of noise')
 
-        corruption = corruption.to(device)
+        corruption = corruption.to(device).clone()
+        #sparsity is applied
+        sparse_matrix = torch.cuda.FloatTensor(batch.shape).uniform_()
+        corruption[sparse_matrix < sparsity] = 0
+
         corrupted_batch = batch + (corruption / std)
         if not manifold:
             corrupted_batch = torch.clamp(corrupted_batch, (0-mean)/std, (1-mean)/std)  #clip below lower and above upper bound

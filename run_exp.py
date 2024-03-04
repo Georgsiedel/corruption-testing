@@ -10,7 +10,7 @@ if __name__ == '__main__':
     os.environ["CUDA_LAUNCH_BLOCKING"] = "1" #prevents "CUDA error: unspecified launch failure" and is recommended for some illegal memory access errors #increases train time by ~5-15%
     #os.environ["CUDA_VISIBLE_DEVICES"] = "1" #this blocks the spawn of multiple workers
 
-    for experiment in [19,24,27]:#range(2, experiments_number):
+    for experiment in [25]:#,17,30,22
 
         configname = (f'experiments.configs.config{experiment}')
         config = importlib.import_module(configname)
@@ -18,7 +18,7 @@ if __name__ == '__main__':
         print('Starting experiment #',experiment, 'on', config.dataset, 'dataset')
         runs = 1
 
-        if experiment == 19:
+        if experiment == 25:
             resume = True
         else:
             resume = False
@@ -34,7 +34,7 @@ if __name__ == '__main__':
                        "--cutmix=\"{}\" --manifold=\"{}\" --combine_train_corruptions={} " \
                        "--concurrent_combinations={} --batchsize={} --number_workers={} --lossparams=\"{}\" " \
                        "--RandomEraseProbability={} --warmupepochs={} --normalize={} --pixel_factor={} --minibatchsize={} " \
-                       "--validonc={}"\
+                       "--validonc={} --swa={} --noise_sparsity={}"\
                     .format(resume, run, experiment, config.epochs, config.learningrate, config.dataset, config.validontest,
                             config.lrschedule, config.lrparams, config.earlystop, config.earlystopPatience,
                             config.optimizer, config.optimizerparams, config.modeltype, config.modelparams, config.resize,
@@ -42,7 +42,7 @@ if __name__ == '__main__':
                             config.cutmix, config.manifold, config.combine_train_corruptions, config.concurrent_combinations,
                             config.batchsize, config.number_workers, config.lossparams, config.RandomEraseProbability,
                             config.warmupepochs, config.normalize, config.pixel_factor, config.minibatchsize,
-                            config.validonc)
+                            config.validonc, config.swa, config.noise_sparsity)
                 os.system(cmd0)
             else:
                 for id, (train_corruption) in enumerate(config.train_corruptions):
@@ -51,18 +51,18 @@ if __name__ == '__main__':
                            "--epochs={} --learningrate={} --dataset={} --validontest={} --lrschedule={} --lrparams=\"{}\" " \
                            "--earlystop={} --earlystopPatience={} --optimizer={} --optimizerparams=\"{}\" --modeltype={} " \
                            "--modelparams=\"{}\" --resize={} --aug_strat_check={} --train_aug_strat={} --loss_function={} " \
-                           "--mixup=\"{}\" --cutmix=\"{}\" " \
-                           "--manifold=\"{}\" --combine_train_corruptions={} --concurrent_combinations={} " \
-                           "--batchsize={} --number_workers={} --lossparams=\"{}\" --RandomEraseProbability={} " \
-                           "--warmupepochs={} --normalize={} --pixel_factor={} --minibatchsize={} --validonc={}"\
+                           "--mixup=\"{}\" --cutmix=\"{}\" --manifold=\"{}\" --combine_train_corruptions={} " \
+                           "--concurrent_combinations={} --batchsize={} --number_workers={} --lossparams=\"{}\" " \
+                           "--RandomEraseProbability={} --warmupepochs={} --normalize={} --pixel_factor={} " \
+                           "--minibatchsize={} --validonc={} --swa={} --noise_sparsity={}"\
                         .format(resume, train_corruption, run, experiment, config.epochs, config.learningrate,
                                 config.dataset, config.validontest, config.lrschedule, config.lrparams, config.earlystop,
                                 config.earlystopPatience, config.optimizer, config.optimizerparams, config.modeltype,
                                 config.modelparams, config.resize, config.aug_strat_check, config.train_aug_strat,
                                 config.loss_function, config.mixup, config.cutmix, config.manifold, config.combine_train_corruptions,
                                 config.concurrent_combinations, config.batchsize, config.number_workers, config.lossparams,
-                                config.RandomEraseProbability, config.warmupepochs, config.normalize,
-                                config.pixel_factor, config.minibatchsize, config.validonc)
+                                config.RandomEraseProbability, config.warmupepochs, config.normalize, config.pixel_factor,
+                                config.minibatchsize, config.validonc, config.swa, config.noise_sparsity)
                     os.system(cmd0)
         # Calculate accuracy and robust accuracy, evaluating each trained network on each corruption
         print('Beginning metric evaluation')
@@ -91,7 +91,7 @@ if __name__ == '__main__':
                     filename = f'./experiments/trained_models/{config.dataset}/{config.modeltype}/config{experiment}_' \
                                f'{config.lrschedule}_separate_{noise_type}_eps_{train_epsilon}_{max}_run_{run}.pth'
                     test_metric_col = eval_metric(filename, config.test_corruptions, config.combine_test_corruptions, config.test_on_c,
-                                                  config.modeltype, config.modelparams, config.resize, config.dataset, 2000,
+                                                  config.modeltype, config.modelparams, config.resize, config.dataset, 1000,
                                                   config.number_workers, config.normalize, config.calculate_adv_distance, config.adv_distance_params,
                                                   config.calculate_autoattack_robustness, config.autoattack_params, config.pixel_factor)
                     test_metrics[:, idx] = np.array(test_metric_col)
