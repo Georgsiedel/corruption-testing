@@ -14,7 +14,6 @@ import matplotlib.pyplot as plt
 def pgd_with_early_stopping(model, inputs, labels, clean_predicted, eps, number_iterations, epsilon_iters, norm):
 
     for i in range(number_iterations):
-        print(type(inputs))
         adv_inputs = projected_gradient_descent(model,
                                                 inputs,
                                                 eps=eps,
@@ -58,22 +57,27 @@ def adv_distance(testloader, model, number_iterations, epsilon, eps_iter, norm, 
 
         correct += (adv_predicted == labels).sum().item()
         total += labels.size(0)
-        if (i+1) % 50 == 0:
+        if (i+1) % 5 == 0:
             print(f"Completed: {i+1} of {setsize}, mean_distances: {sum(distance_list_1)/len(distance_list_1)}, {sum(distance_list_2)/len(distance_list_2)}, correct: {correct}, total: {total}, accuracy: {correct / total * 100}%")
     adv_acc = correct / total
     return distance_list_1, image_idx_1, distance_list_2, image_idx_2, adv_acc
 
-def clever_score(testloader, model, clever_batches, clever_samples, epsilon, norm):
+def clever_score(testloader, model, clever_batches, clever_samples, epsilon, norm, num_classes):
 
     torch.cuda.empty_cache()
     clever_scores = []
     image_ids = []
-
+    images, _ = next(iter(testloader))
+    model = PyTorchClassifier(model=model,
+                            loss=torch.nn.CrossEntropyLoss(),
+                            optimizer=torch.optim.SGD(model.parameters(), momentum= 0.9, weight_decay= 1e-4, lr=0.01),
+                            input_shape=images[0].size(),
+                            nb_classes=num_classes)
     # Iterate through each image for CLEVER score calculation
     for batch_idx, (inputs, targets) in enumerate(testloader):
         for id, input in enumerate(inputs):
             clever_score = clever_u(model,
-                                    input,
+                                    input.numpy(),
                                     nb_batches=clever_batches,
                                     batch_size=clever_samples,
                                     radius=epsilon,
@@ -88,6 +92,7 @@ def clever_score(testloader, model, clever_batches, clever_samples, epsilon, nor
     return clever_scores, image_ids
 
 def compute_adv_distance(testset, workers, model, adv_distance_params):
+
     epsilon = adv_distance_params["epsilon"]
     eps_iter = adv_distance_params["eps_iter"]
     nb_iters = adv_distance_params["nb_iters"]
@@ -97,7 +102,7 @@ def compute_adv_distance(testset, workers, model, adv_distance_params):
 
     print(f"{norm}-Adversarial Distance upper bound calculation using PGD attack with "
           f"{nb_iters} iterations of stepsize {eps_iter}")
-
+    num_classes = len(testset.classes)
     truncated_testset, _ = torch.utils.data.random_split(testset,
                                                          [adv_distance_params["setsize"], len(testset)-adv_distance_params["setsize"]],
                                                          generator=torch.Generator().manual_seed(42))
@@ -108,7 +113,7 @@ def compute_adv_distance(testset, workers, model, adv_distance_params):
         number_iterations=nb_iters, epsilon=epsilon, eps_iter=eps_iter, norm=norm, setsize=adv_distance_params["setsize"])
     mean_dist1, mean_dist2 = [np.asarray(torch.tensor(d).cpu()).mean() for d in [dst1, dst2]]
 
-    adv_dist_list = np.array(dst2)
+    adv_dist_list = np.asarray([t.item() for t in dst2])
     sorted_indices = np.argsort(adv_dist_list)
     adv_distance_sorted = adv_dist_list[sorted_indices]
 
@@ -116,7 +121,7 @@ def compute_adv_distance(testset, workers, model, adv_distance_params):
         print(f"{norm}-Adversarial Distance (statistical) lower bound calculation using Clever Score with "
               f"{clever_batches} batches with {clever_samples} samples each.")
         clever_scores, clever_id = clever_score(testloader=truncated_testloader, model=model, clever_batches=clever_batches,
-                             clever_samples=clever_samples, epsilon=epsilon, norm=norm)
+                             clever_samples=clever_samples, epsilon=epsilon, norm=norm, num_classes=num_classes)
         clever_scores_sorted = clever_scores[sorted_indices]
         mean_clever_score = np.asarray(torch.tensor(clever_scores).cpu()).mean()
     else:
@@ -130,9 +135,9 @@ def compute_adv_distance(testset, workers, model, adv_distance_params):
     plt.ylabel("Distance")
     plt.legend()
     plt.show()
-    plt.savefig(f'results/{dataset}/{modeltype}/config{experiment}_{lrschedule}_{training_folder}_learning_curve'
-                f'{filename_spec}run_{run}.svg')
-    plt.close()
+    #plt.savefig(f'results/{dataset}/{modeltype}/config{experiment}_{lrschedule}_{training_folder}_learning_curve'
+    #            f'{filename_spec}run_{run}.svg')
+    #plt.close()
 
     return adv_acc*100, mean_dist1, mean_dist2, mean_clever_score
 
