@@ -6,76 +6,6 @@ from torch import Tensor
 from typing import List, Optional, Tuple
 import random
 
-
-class CustomRandomErasing(torchvision.transforms.RandomErasing):
-    def __init__(self, normalize, p, value='random'):
-        super(CustomRandomErasing, self).__init__(p=p, scale=(0.02, 0.33), ratio=(0.3, 3.3), value=value,
-                                                  inplace=False)
-        self.normalize = normalize
-
-    #@staticmethod
-    def get_params(self,
-            img: Tensor, scale: Tuple[float, float], ratio: Tuple[float, float], value: Optional[List[float]] = None
-    ):
-
-        img_c, img_h, img_w = img.shape[-3], img.shape[-2], img.shape[-1]
-        area = img_h * img_w
-
-        log_ratio = torch.log(torch.tensor(ratio))
-        for _ in range(10):
-            erase_area = area * torch.empty(1).uniform_(scale[0], scale[1]).item()
-            aspect_ratio = torch.exp(torch.empty(1).uniform_(log_ratio[0], log_ratio[1])).item()
-
-            h = int(round(math.sqrt(erase_area * aspect_ratio)))
-            w = int(round(math.sqrt(erase_area / aspect_ratio)))
-            if not (h < img_h and w < img_w):
-                continue
-
-            if value is None:
-                if self.normalize == True:
-                    v = torch.empty([img_c, h, w], dtype=torch.float32).normal_()
-                else:
-                    v = torch.empty([img_c, h, w], dtype=torch.float32).uniform_()
-            else:
-                v = torch.tensor(value)[:, None, None]
-
-            i = torch.randint(0, img_h - h + 1, size=(1,)).item()
-            j = torch.randint(0, img_w - w + 1, size=(1,)).item()
-            return i, j, h, w, v
-
-        # Return original image
-        return 0, 0, img_h, img_w, img
-
-    def forward(self, img):
-        """
-        Args:
-            img (Tensor): Tensor image to be erased.
-
-        Returns:
-            img (Tensor): Erased Tensor image.
-        """
-        if torch.rand(1) < self.p:
-
-            # cast self.value to script acceptable type
-            if isinstance(self.value, (int, float)):
-                value = [float(self.value)]
-            elif isinstance(self.value, str):
-                value = None
-            elif isinstance(self.value, (list, tuple)):
-                value = [float(v) for v in self.value]
-            else:
-                value = self.value
-
-            if value is not None and not (len(value) in (1, img.shape[-3])):
-                raise ValueError(
-                    "If value is a sequence, it should have either a single value or "
-                    f"{img.shape[-3]} (number of input channels)"
-                )
-            print(self.scale, self.ratio, value)
-            x, y, h, w, v = self.get_params(self, img, scale=self.scale, ratio=self.ratio, value=value)
-            return F.erase(img, x, y, h, w, v, self.inplace)
-        return img
-
 class RandomMixup(torch.nn.Module):
     """Randomly apply Mixup to the provided batch and targets.
     The class implements the data augmentations as described in the paper
@@ -134,7 +64,6 @@ class RandomMixup(torch.nn.Module):
             return batch, target
 
         lambda_param = float(torch._sample_dirichlet(torch.tensor([self.alpha, self.alpha]))[0])
-
         target_rolled = target.roll(1, 0)
         target_rolled.mul_(1.0 - lambda_param)
         target.mul_(lambda_param).add_(target_rolled)
@@ -266,20 +195,18 @@ class RandomCutmix(torch.nn.Module):
         )
         return s
 
-def mixup_process(inputs, targets, robust_samples, num_classes, mixup_alpha, mixup_p, cutmix_alpha, cutmix_p,
-                  random_erase_p, normalize, manifold):
+def mixup_process(inputs, targets, robust_samples, num_classes, mixup_alpha, mixup_p, cutmix_alpha, cutmix_p, manifold):
 
     if manifold==True and mixup_alpha > 0.0:
         mixupcutmix = RandomMixup(num_classes, p=mixup_p, alpha=mixup_alpha)
         inputs, targets = mixupcutmix(inputs, targets, robust_samples)
-    elif (cutmix_alpha or cutmix_p) == 0 and (mixup_alpha or mixup_p) == 0 and random_erase_p == 0:
+    elif (cutmix_alpha or cutmix_p) == 0 and (mixup_alpha or mixup_p) == 0:
         return inputs, targets
     else:
-        total_probability = cutmix_p + mixup_p + random_erase_p
+        total_probability = cutmix_p + mixup_p
         if total_probability > 1:
             cutmix_p /= total_probability
             mixup_p /= total_probability
-            random_erase_p /= total_probability
 
         random_number = random.uniform(0, 1)
 
@@ -289,10 +216,6 @@ def mixup_process(inputs, targets, robust_samples, num_classes, mixup_alpha, mix
         elif random_number < cutmix_p + mixup_p:
             mixupcutmix = RandomMixup(num_classes, p=1.0, alpha=mixup_alpha)
             inputs, targets = mixupcutmix(inputs, targets, robust_samples)
-        elif random_number < cutmix_p + mixup_p + random_erase_p:
-            mixupcutmix = CustomRandomErasing(normalize, p=1.0, value='random')
-            original_images = inputs.size(0) / (robust_samples + 1)
-            inputs = mixupcutmix(inputs[original_images:,:,:,:])
         else:
             return inputs, targets
 

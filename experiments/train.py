@@ -116,6 +116,8 @@ parser.add_argument('--swa', type=str2bool, nargs='?', const=False, default=Fals
                     help='Whether to use stochastic weight averaging over the last epochs')
 parser.add_argument('--noise_sparsity', default=0.0, type=float,
                     help='probability of not applying a calculated noise value to a dimension of an image')
+parser.add_argument('--noise_patch_lower_scale', default=1.0, type=float, help='lower bound of the scale to choose the '
+                    'area ratio of the image from, which gets perturbed by random noise')
 
 args = parser.parse_args()
 configname = (f'experiments.configs.config{args.experiment}')
@@ -139,8 +141,8 @@ def train_epoch(pbar):
         with torch.cuda.amp.autocast():
             outputs, mixed_targets = model(inputs, targets, robust_samples, train_corruptions, args.mixup['alpha'],
                                            args.mixup['p'], args.manifold['apply'], args.manifold['noise_factor'],
-                                           args.cutmix['alpha'], args.cutmix['p'], args.RandomEraseProbability,
-                                           args.minibatchsize, args.concurrent_combinations, args.noise_sparsity)
+                                           args.cutmix['alpha'], args.cutmix['p'], args.minibatchsize,
+                                           args.concurrent_combinations, args.noise_sparsity, args.noise_patch_lower_scale)
             loss = criterion(outputs, mixed_targets)
 
         scaler.scale(loss).backward()
@@ -177,7 +179,7 @@ def valid_epoch(pbar, net):
             inputs, targets = inputs.to(device, dtype=torch.float32), targets.to(device)
 
             with torch.cuda.amp.autocast():
-                outputs, targets = net(inputs, targets)
+                outputs = net(inputs)
                 loss = test_criterion(outputs, targets)
 
             test_loss += loss.item()

@@ -41,7 +41,6 @@ class AugmentedDataset(torch.utils.data.Dataset):
     self.preprocess =  transforms_preprocess
     self.augment = transforms_augmentation
     self.robust_samples = robust_samples
-    print(self.augment)
 
   def __getitem__(self, i):
     x, y = self.dataset[i]
@@ -178,7 +177,7 @@ def create_transforms(dataset, aug_strat_check, train_aug_strat, resize = False,
     elif dataset == 'TinyImageNet':
         transforms_aug_1 = transforms.Compose([flip, c64])
     elif dataset == 'ImageNet':
-        transforms_aug_1 = transforms.Compose([flip, rrc224])
+        transforms_aug_1 = transforms.Compose([flip])
     if aug_strat_check == True:
         tf = getattr(transforms, train_aug_strat)
         transforms_aug_1 = transforms.Compose([transforms_aug_1, tf()])

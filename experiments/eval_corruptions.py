@@ -6,18 +6,17 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 
 from experiments.noise import apply_lp_corruption
 
-def compute_p_corruptions(testloader, model, test_corruptions, normalized, dataset):
+def compute_p_corruptions(testloader, model, test_corruptions, dataset):
     with torch.no_grad():
         model.eval()
-        correct = 0
-        total = 0
+        correct, total = 0, 0
         for batch_idx, (inputs, targets) in enumerate(testloader):
 
             inputs, targets = inputs.to(device, dtype=torch.float), targets.to(device)
-            inputs_pert = apply_lp_corruption(inputs, 1, test_corruptions, 1, False, dataset, manifold=False, sparsity=0.0)
+            inputs_pert = apply_lp_corruption(inputs, 1, test_corruptions, 1, False, dataset)
 
             with torch.cuda.amp.autocast():
-                targets_pred, targets = model(inputs_pert, targets)
+                targets_pred = model(inputs_pert)
 
             _, predicted = targets_pred.max(1)
             total += targets.size(0)
@@ -27,8 +26,7 @@ def compute_p_corruptions(testloader, model, test_corruptions, normalized, datas
         return acc
 
 def compute_c_corruptions(dataset, testsets_c, model, batchsize, num_classes, eval_run = False):
-    accs_c = []
-    rmsce_c_list = []
+    accs_c, rmsce_c_list = [], []
     if eval_run == False:
         print(f"Testing on {dataset}-c Benchmark Noise (Hendrycks 2019)")
 
@@ -56,8 +54,7 @@ def compute_c_corruptions(dataset, testsets_c, model, batchsize, num_classes, ev
 def compute_c(loader_c, model, num_classes):
     with torch.no_grad():
         model.eval()
-        correct = 0
-        total = 0
+        correct, total = 0, 0
         calibration_metric = MulticlassCalibrationError(num_classes=num_classes, n_bins=15, norm='l2')
         all_targets = torch.empty(0)
         all_targets_pred = torch.empty((0, num_classes))
@@ -66,7 +63,7 @@ def compute_c(loader_c, model, num_classes):
         for batch_idx, (inputs, targets) in enumerate(loader_c):
             inputs, targets = inputs.to(device, dtype=torch.float), targets.to(device)
             with torch.cuda.amp.autocast():
-                targets_pred, targets = model(inputs, targets)
+                targets_pred = model(inputs)
 
             _, predicted = targets_pred.max(1)
             total += targets.size(0)

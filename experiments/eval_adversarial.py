@@ -37,11 +37,11 @@ def pgd_with_early_stopping(model, inputs, labels, clean_predicted, eps, number_
 def adv_distance(testloader, model, number_iterations, epsilon, eps_iter, norm, setsize):
     distance_list_1, image_idx_1 = [], []
     distance_list_2, image_idx_2 = [], []
-
+    model.eval()
     correct, total = 0, 0
     for i, (inputs, labels) in enumerate(testloader):
         inputs, labels = inputs.to(device), labels.to(device)
-        outputs, targets = model(inputs)
+        outputs = model(inputs)
         _, predicted = torch.max(outputs.data, 1)
 
         adv_inputs, adv_predicted = pgd_with_early_stopping(model, inputs, labels, predicted, epsilon, number_iterations, eps_iter, norm)
@@ -129,6 +129,10 @@ def compute_adv_distance(testset, workers, model, adv_distance_params):
     plt.xlabel("Sorted Image ID")
     plt.ylabel("Distance")
     plt.legend()
+    plt.show()
+    plt.savefig(f'results/{dataset}/{modeltype}/config{experiment}_{lrschedule}_{training_folder}_learning_curve'
+                f'{filename_spec}run_{run}.svg')
+    plt.close()
 
     return adv_acc*100, mean_dist1, mean_dist2, mean_clever_score
 

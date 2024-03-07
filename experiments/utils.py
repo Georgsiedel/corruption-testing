@@ -6,6 +6,7 @@ from experiments.jsd_loss import JsdCrossEntropy
 
 def plot_images(images, corrupted_images, number):
     fig, axs = plt.subplots(number, 2)
+    images, corrupted_images = images.cpu(), corrupted_images.cpu()
     for i in range(number):
         image = images[i]
         image = torch.squeeze(image)

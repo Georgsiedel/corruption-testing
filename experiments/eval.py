@@ -25,7 +25,7 @@ def compute_clean(testloader, model, num_classes):
 
             inputs, targets = inputs.to(device, dtype=torch.float), targets.to(device)
             with torch.cuda.amp.autocast():
-                targets_pred, targets = model(inputs, targets)
+                targets_pred = model(inputs)
 
             _, predicted = targets_pred.max(1)
             total += targets.size(0)

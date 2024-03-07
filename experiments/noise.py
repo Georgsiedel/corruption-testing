@@ -1,6 +1,7 @@
 import re
 import torch
 import torchvision
+import math
 from torchvision import datasets
 import torchvision.transforms as transforms
 from skimage.util import random_noise
@@ -50,8 +51,41 @@ class Noise_Sampler(torch.nn.Module):
 
             return batch
 
+def get_image_mask(batch, noise_patch_lower_scale=1.0, ratio=[0.3, 3.3]):
+        """Get image mask for Patched Noise (see e.g. Patch Gaussian paper).
+        Args:
+            batch (Tensor): batch of images to be masked.
+            scale (sequence): range of proportion of masked area against input image.
+            ratio (sequence): range of aspect ratio of masked area.
+        """
+        if noise_patch_lower_scale == 1.0:
+            return torch.ones(batch.size(), dtype=torch.bool, device=device)
+
+        img_c, img_h, img_w = batch.shape[-3], batch.shape[-2], batch.shape[-1]
+        area = img_h * img_w
+
+        log_ratio = torch.log(torch.tensor(ratio))
+
+        patched_area = area * torch.empty(1).uniform_(noise_patch_lower_scale, 1.0).item()
+        aspect_ratio = torch.exp(torch.empty(1).uniform_(log_ratio[0], log_ratio[1])).item()
+
+        h = int(round(math.sqrt(patched_area * aspect_ratio)))
+        w = int(round(math.sqrt(patched_area / aspect_ratio)))
+        if h > img_h:
+            h = img_h
+            w = int(round(img_w * patched_area / area)) #reset patched area ratio when patch needs to be cropped due to aspect ratio
+        if w > img_w:
+            w = img_w
+            h = int(round(img_h * patched_area / area)) #reset patched area ratio when patch needs to be cropped due to aspect ratio
+        i = torch.randint(0, img_h - h + 1, size=(1,)).item()
+        j = torch.randint(0, img_w - w + 1, size=(1,)).item()
+        mask = torch.zeros(batch.size(), dtype=torch.bool, device=device)
+        mask[:,:,i:i + h, j:j + w] = True
+
+        return mask
+
 def apply_lp_corruption(batch, minibatchsize, corruptions, concurrent_combinations, normalized, dataset,
-                        manifold=False, manifold_factor=1, sparsity=0.0):
+                        manifold=False, manifold_factor=1, sparsity=0.0, noise_patch_lower_scale=1.0):
 
     #Calculate the mean values for each channel across all images
     mean, std = normalization_values(batch, dataset, normalized, manifold, manifold_factor)
@@ -76,6 +110,7 @@ def apply_lp_corruption(batch, minibatchsize, corruptions, concurrent_combinatio
         else:
             corruptions_list = [corruptions]
 
+        noisy_minibatch = torch.clone(minibatch)
         for _, (corruption) in enumerate(corruptions_list):
             if corruption['distribution'] == 'uniform':
                 d = dist.Uniform(0, 1).sample()
@@ -90,9 +125,11 @@ def apply_lp_corruption(batch, minibatchsize, corruptions, concurrent_combinatio
             if d == 0: #dist sampling include lower bound but exclude upper, but we do not want eps = 0
                 d = 1
             epsilon = float(d) * float(corruption['epsilon'])
-            minibatch = sample_lp_corr_batch(corruption['noise_type'], epsilon, minibatch, corruption['sphere'], mean, std, manifold, sparsity)
+            noisy_minibatch = sample_lp_corr_batch(corruption['noise_type'], epsilon, noisy_minibatch, corruption['sphere'], mean, std, manifold, sparsity)
 
-        minibatches[id] = minibatch
+        mask = get_image_mask(minibatch, noise_patch_lower_scale = noise_patch_lower_scale, ratio = [0.3, 3.3])
+        final_minibatch = torch.where(mask, noisy_minibatch, minibatch)
+        minibatches[id] = final_minibatch
 
     batch = minibatches.view(-1, batch.size()[1], batch.size()[2], batch.size()[3])
     return batch

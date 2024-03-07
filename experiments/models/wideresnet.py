@@ -109,20 +109,22 @@ class WideResNet(ct_model.CtModel):
         return nn.Sequential(*layers)
 
     def forward(self, x, targets=None, robust_samples=0, corruptions=None, mixup_alpha=0.0, mixup_p=0.0, manifold=False,
-                manifold_noise_factor=1, cutmix_alpha=0.0, cutmix_p=0.0, random_erase_p=0.0, noise_minibatchsize=1,
-                concurrent_combinations=1, noise_sparsity=0.0):
+                manifold_noise_factor=1, cutmix_alpha=0.0, cutmix_p=0.0, noise_minibatchsize=1,
+                concurrent_combinations=1, noise_sparsity=0.0, noise_patch_lower_scale = 1.0):
 
         out = super(WideResNet, self).forward_normalize(x)
         out, mixed_targets = super(WideResNet, self).forward_noise_mixup(out, targets, robust_samples, corruptions,
                                         mixup_alpha, mixup_p, manifold, manifold_noise_factor, cutmix_alpha, cutmix_p,
-                                        random_erase_p, noise_minibatchsize, concurrent_combinations, noise_sparsity)
-        out = self.bn1(out)
-        out = self.activation_function(out)
+                                        noise_minibatchsize, concurrent_combinations, noise_sparsity,
+                                        noise_patch_lower_scale)
+        out = self.activation_function(self.bn1(out))
         out = F.avg_pool2d(out, 8)
         out = out.view(out.size(0), -1)
         out = self.linear(out)
-
-        return out, mixed_targets
+        if self.training == True:
+            return out, mixed_targets
+        else:
+            return out
 
 def WideResNet_28_2(num_classes, factor, dataset, normalized, block=WideBasic, dropout_rate=0.0, activation_function='relu'):
     return WideResNet(depth=28, widen_factor=2, dataset=dataset, normalized=normalized, dropout_rate=dropout_rate,

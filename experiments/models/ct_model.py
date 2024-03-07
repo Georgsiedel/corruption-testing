@@ -1,4 +1,4 @@
-import copy
+from experiments.utils import plot_images
 import torch
 import torch.nn as nn
 import numpy as np
@@ -24,26 +24,28 @@ class CtModel(nn.Module):
         return x
 
     def forward_noise_mixup(self, out, targets, robust_samples, corruptions, mixup_alpha, mixup_p, manifold,
-                            manifold_noise_factor, cutmix_alpha, cutmix_p, random_erase_p, noise_minibatchsize,
-                            concurrent_combinations, noise_sparsity):
+                            manifold_noise_factor, cutmix_alpha, cutmix_p, noise_minibatchsize,
+                            concurrent_combinations, noise_sparsity, noise_patch_lower_scale):
 
         #define where mixup is applied. k=0 is in the input space, k>0 is in the embedding space (manifold mixup)
         if self.training == False: k = -1
         elif mixup_alpha > 0.0 and manifold == True: k = np.random.choice(range(3), 1, p=[0.5, 0.25, 0.25])[0] #
         else: k = 0
+
         original_batchsize = (out.size(0) // (robust_samples + 1))
         noisy_batchsize = max(original_batchsize * robust_samples, original_batchsize)
 
         if k == 0:  # Do input mixup if k is 0
             with torch.no_grad():
-                out, targets = mixup_process(out, targets, robust_samples, self.num_classes, mixup_alpha, mixup_p,
-                                             cutmix_alpha, cutmix_p, random_erase_p, self.normalized, manifold=False)
-                selected_out = out[-noisy_batchsize:, :, :, :]
+                mixed_out, targets = mixup_process(out, targets, robust_samples, self.num_classes, mixup_alpha, mixup_p,
+                                             cutmix_alpha, cutmix_p, manifold=False)
+                selected_out = mixed_out#[-noisy_batchsize:, :, :, :]
                 noisy_out = apply_lp_corruption(selected_out, noise_minibatchsize, corruptions, concurrent_combinations,
                                           self.normalized, self.dataset, manifold=False, manifold_factor=1,
-                                          sparsity=noise_sparsity)
-                out = torch.cat((out[:-noisy_batchsize, :, :, :], noisy_out), dim=0)
+                                          sparsity=noise_sparsity, noise_patch_lower_scale=noise_patch_lower_scale)
 
+                out = noisy_out#torch.cat((mixed_out[:-noisy_batchsize, :, :, :], noisy_out), dim=0)
+                #plot_images(out[0:3], out[256:259], 3)
         out = self.blocks[0](out)
 
         for i, ResidualBlock in enumerate(self.blocks[1:]):
@@ -53,12 +55,12 @@ class CtModel(nn.Module):
 
                 with torch.no_grad():
                     out, targets = mixup_process(out, targets, robust_samples, self.num_classes, mixup_alpha, mixup_p,
-                                                 cutmix_alpha, cutmix_p, random_erase_p, self.normalized, manifold=True)
-                    selected_out = out[-noisy_batchsize:, :, :, :]
+                                                 cutmix_alpha, cutmix_p, manifold=True)
+                    selected_out = out#[-noisy_batchsize:, :, :, :]
                     noisy_out = apply_lp_corruption(selected_out, noise_minibatchsize, corruptions, concurrent_combinations,
                                     self.normalized, self.dataset, manifold=True, manifold_factor=manifold_noise_factor,
-                                    sparsity=noise_sparsity)
-                    out = torch.cat((out[:-noisy_batchsize, :, :, :], noisy_out), dim=0)
+                                    sparsity=noise_sparsity, noise_patch_lower_scale=noise_patch_lower_scale)
+                    out = noisy_out#torch.cat((out[:-noisy_batchsize, :, :, :], noisy_out), dim=0)
 
         return out, targets
 
