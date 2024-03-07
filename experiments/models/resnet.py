@@ -112,22 +112,22 @@ class ResNet(ct_model.CtModel):
         return out
 
 
-def ResNet18(num_classes, dataset, normalized, factor):
+def ResNet18(num_classes, dataset, normalized, factor, activation_function='relu'):
     return ResNet(BasicBlock, [2, 2, 2, 2], num_classes=num_classes, dataset=dataset, normalized=normalized, factor=factor,
-                  activation_function='relu')
+                  activation_function=activation_function)
 
-def ResNet34():
-    return ResNet(BasicBlock, [3, 4, 6, 3], num_classes=num_classes, dataset=dataset, normalized=normalized, factor=1,
-                  activation_function='relu')
+def ResNet34(num_classes, dataset, normalized, factor, activation_function='relu'):
+    return ResNet(BasicBlock, [3, 4, 6, 3], num_classes=num_classes, dataset=dataset, normalized=normalized, factor=factor,
+                  activation_function=activation_function)
 
-def ResNet50():
-    return ResNet(Bottleneck, [3, 4, 6, 3], num_classes=num_classes, dataset=dataset, normalized=normalized, factor=1,
-                  activation_function='relu')
+def ResNet50(num_classes, dataset, normalized, factor, activation_function='relu'):
+    return ResNet(Bottleneck, [3, 4, 6, 3], num_classes=num_classes, dataset=dataset, normalized=normalized, factor=factor,
+                  activation_function=activation_function)
 
-def ResNet101():
-    return ResNet(Bottleneck, [3, 4, 23, 3], num_classes=num_classes, dataset=dataset, normalized=normalized, factor=1,
-                  activation_function='relu')
+def ResNet101(num_classes, dataset, normalized, factor, activation_function='relu'):
+    return ResNet(Bottleneck, [3, 4, 23, 3], num_classes=num_classes, dataset=dataset, normalized=normalized, factor=factor,
+                  activation_function=activation_function)
 
-def ResNet152():
-    return ResNet(Bottleneck, [3, 8, 36, 3], num_classes=num_classes, dataset=dataset, normalized=normalized, factor=1,
-                  activation_function='relu')
+def ResNet152(num_classes, dataset, normalized, factor, activation_function='relu'):
+    return ResNet(Bottleneck, [3, 8, 36, 3], num_classes=num_classes, dataset=dataset, normalized=normalized, factor=factor,
+                  activation_function=activation_function)

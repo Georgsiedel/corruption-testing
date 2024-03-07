@@ -77,12 +77,12 @@ def eval_metric(modelfilename, test_corruptions, combine_test_corruptions, test_
         adv_acc_aa, mean_dist_aa = eval_adversarial.compute_adv_acc(autoattack_params, testset, model, workers, batchsize)
         accs = accs + [adv_acc_aa, mean_dist_aa]
     if combine_test_corruptions: # combined p-norm corruption robust accuracy
-        acc = eval_corruptions.compute_p_corruptions(testloader, model, test_corruptions, normalized, dataset)
+        acc = eval_corruptions.compute_p_corruptions(testloader, model, test_corruptions, dataset)
         print(acc, "% Accuracy on combined Lp-norm Test Noise")
         accs.append(acc)
     else: # separate p-norm corruption robust accuracy
         for id, (test_corruption) in enumerate(test_corruptions):
-            acc = eval_corruptions.compute_p_corruptions(testloader, model, test_corruption, normalized, dataset)
+            acc = eval_corruptions.compute_p_corruptions(testloader, model, test_corruption, dataset)
             print(acc, "% Accuracy on random test corruptions of type:", test_corruption['noise_type'], test_corruption['epsilon'])
             accs.append(acc)
 

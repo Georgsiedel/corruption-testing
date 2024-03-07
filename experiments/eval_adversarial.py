@@ -44,7 +44,6 @@ def adv_distance(testloader, model, number_iterations, epsilon, eps_iter, norm, 
         _, predicted = torch.max(outputs.data, 1)
 
         adv_inputs, adv_predicted = pgd_with_early_stopping(model, inputs, labels, predicted, epsilon, number_iterations, eps_iter, norm)
-
         distance = torch.norm((inputs - adv_inputs), p=norm)
         if (predicted == labels):
             distance_list_1.append(distance)
@@ -52,13 +51,14 @@ def adv_distance(testloader, model, number_iterations, epsilon, eps_iter, norm, 
             distance_list_2.append(distance) #only originally correctly classified distances are counted
             image_idx_2.append(i) #only originally correctly classified points
         else:
-            distance_list_1.append(0) #originally misclassified distances are counted as 0
+            distance_list_1.append(torch.tensor([0.0])) #originally misclassified distances are counted as 0
             image_idx_1.append(i) #all points, also originally misclassified ones
 
         correct += (adv_predicted == labels).sum().item()
         total += labels.size(0)
-        if (i+1) % 5 == 0:
+        if (i+1) % 20 == 0:
             print(f"Completed: {i+1} of {setsize}, mean_distances: {sum(distance_list_1)/len(distance_list_1)}, {sum(distance_list_2)/len(distance_list_2)}, correct: {correct}, total: {total}, accuracy: {correct / total * 100}%")
+    print(distance_list_1)
     adv_acc = correct / total
     return distance_list_1, image_idx_1, distance_list_2, image_idx_2, adv_acc
 
@@ -112,8 +112,7 @@ def compute_adv_distance(testset, workers, model, adv_distance_params):
     dst1, idx1, dst2, idx2, adv_acc = adv_distance(testloader=truncated_testloader, model=model,
         number_iterations=nb_iters, epsilon=epsilon, eps_iter=eps_iter, norm=norm, setsize=adv_distance_params["setsize"])
     mean_dist1, mean_dist2 = [np.asarray(torch.tensor(d).cpu()).mean() for d in [dst1, dst2]]
-
-    adv_dist_list = np.asarray([t.item() for t in dst2])
+    adv_dist_list = np.asarray([t.item() for t in dst1])
     sorted_indices = np.argsort(adv_dist_list)
     adv_distance_sorted = adv_dist_list[sorted_indices]
 
@@ -122,11 +121,10 @@ def compute_adv_distance(testset, workers, model, adv_distance_params):
               f"{clever_batches} batches with {clever_samples} samples each.")
         clever_scores, clever_id = clever_score(testloader=truncated_testloader, model=model, clever_batches=clever_batches,
                              clever_samples=clever_samples, epsilon=epsilon, norm=norm, num_classes=num_classes)
-        clever_scores_sorted = clever_scores[sorted_indices]
+        clever_scores_sorted = np.asarray(clever_scores)[sorted_indices]
         mean_clever_score = np.asarray(torch.tensor(clever_scores).cpu()).mean()
     else:
         mean_clever_score = 0.0
-
     plt.figure(figsize=(15, 5))
     plt.scatter(range(len(adv_distance_sorted)), adv_distance_sorted, s=3, label="PGD Adversarial Distance")
     if adv_distance_params['clever'] == True:
