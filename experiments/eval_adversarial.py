@@ -132,7 +132,7 @@ def compute_adv_distance(testset, workers, model, adv_distance_params):
     plt.xlabel("Sorted Image ID")
     plt.ylabel("Distance")
     plt.legend()
-    plt.show()
+    #plt.show()
     #plt.savefig(f'results/{dataset}/{modeltype}/config{experiment}_{lrschedule}_{training_folder}_learning_curve'
     #            f'{filename_spec}run_{run}.svg')
     #plt.close()
