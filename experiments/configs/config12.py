@@ -42,7 +42,7 @@ loss_function = 'jsd' #'ce', 'jsd'
 lossparams = {'num_splits': 3, 'alpha': 12, 'smoothing': 0.1}
 mixup = {'alpha': 0.2, 'p': 1.0} #default alpha 0.2 #If both mixup and cutmix are >0, mixup or cutmix are selected by 0.5 chance
 cutmix = {'alpha': 1.0, 'p': 1.0} # default alpha 1.0 #If both mixup and cutmix are >0, mixup or cutmix are selected by 0.5 chance
-manifold = {'apply': True, 'noise_factor': 3}
+manifold = {'apply': True, 'noise_factor': 2}
 RandomEraseProbability = 0.0
 swa = False
 

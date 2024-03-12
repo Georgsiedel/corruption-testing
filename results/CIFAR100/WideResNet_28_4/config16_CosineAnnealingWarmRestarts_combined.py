@@ -13,7 +13,7 @@ train_corruptions = np.array([
 {'noise_type': 'uniform-l0-impulse', 'epsilon': 0.15, 'sphere': True, 'distribution': 'uniform'}
 ])
 noise_sparsity = 0.5
-noise_patch_lower_scale = 0.5
+noise_patch_lower_scale = 1.0
 combine_train_corruptions = True #augment the train dataset with all corruptions
 concurrent_combinations = 1 #only has an effect if combine_train_corruption is True
 
@@ -25,8 +25,8 @@ validontest = True
 validonc = True
 lrschedule = 'CosineAnnealingWarmRestarts'
 learningrate = 0.2
-epochs = 375
-lrparams = {'T_0': 25, 'T_mult': 2}
+epochs = 450
+lrparams = {'T_0': 30, 'T_mult': 2}
 warmupepochs = 0
 earlystop = False
 earlystopPatience = 15
@@ -34,7 +34,7 @@ optimizer = 'SGD'
 optimizerparams = {'momentum': 0.9, 'weight_decay': 1e-4}
 number_workers = 1
 modeltype = 'WideResNet_28_4'
-modelparams = {'dropout_rate': 0.2, 'activation_function': 'relu'}
+modelparams = {'dropout_rate': 0.2, 'activation_function': 'silu'}
 resize = False
 aug_strat_check = True
 train_aug_strat = 'TrivialAugmentWide' #TrivialAugmentWide, RandAugment, AutoAugment, AugMix
@@ -42,7 +42,7 @@ loss_function = 'jsd' #'ce', 'jsd'
 lossparams = {'num_splits': 3, 'alpha': 12, 'smoothing': 0.1}
 mixup = {'alpha': 0.2, 'p': 1.0} #default alpha 0.2 #If both mixup and cutmix are >0, mixup or cutmix are selected by 0.5 chance
 cutmix = {'alpha': 1.0, 'p': 1.0} # default alpha 1.0 #If both mixup and cutmix are >0, mixup or cutmix are selected by 0.5 chance
-manifold = {'apply': True, 'noise_factor': 3}
+manifold = {'apply': True, 'noise_factor': 2}
 RandomEraseProbability = 0.0
 swa = False
 

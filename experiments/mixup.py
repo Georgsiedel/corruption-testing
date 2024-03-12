@@ -198,10 +198,10 @@ class RandomCutmix(torch.nn.Module):
 
 def mixup_process(inputs, targets, robust_samples, num_classes, mixup_alpha, mixup_p, cutmix_alpha, cutmix_p, manifold):
 
-    if manifold==True and mixup_alpha > 0.0:
-        mixupcutmix = RandomMixup(num_classes, p=mixup_p, alpha=mixup_alpha)
-        inputs, targets = mixupcutmix(inputs, targets, robust_samples)
-    elif (cutmix_alpha or cutmix_p) == 0 and (mixup_alpha or mixup_p) == 0:
+    #if manifold==True and (mixup_p > 0.0 or cutmix_p > 0.0):
+    #    mixupcutmix = RandomMixup(num_classes, p=mixup_p, alpha=mixup_alpha)
+    #    inputs, targets = mixupcutmix(inputs, targets, robust_samples)
+    if (cutmix_alpha or cutmix_p) == 0 and (mixup_alpha or mixup_p) == 0:
         return inputs, targets
     else:
         total_probability = cutmix_p + mixup_p

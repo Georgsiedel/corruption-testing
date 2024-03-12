@@ -4,7 +4,7 @@ from torch.utils.data import DataLoader
 from torchmetrics.classification import MulticlassCalibrationError
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
-from experiments.noise import apply_lp_corruption
+from experiments.noise import apply_noise
 
 def compute_p_corruptions(testloader, model, test_corruptions, dataset):
     with torch.no_grad():
@@ -13,7 +13,7 @@ def compute_p_corruptions(testloader, model, test_corruptions, dataset):
         for batch_idx, (inputs, targets) in enumerate(testloader):
 
             inputs, targets = inputs.to(device, dtype=torch.float), targets.to(device)
-            inputs_pert = apply_lp_corruption(inputs, 1, test_corruptions, 1, False, dataset)
+            inputs_pert = apply_noise(inputs, 1, test_corruptions, 1, False, dataset)
 
             with torch.cuda.amp.autocast():
                 targets_pred = model(inputs_pert)

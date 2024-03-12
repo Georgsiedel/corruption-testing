@@ -1,5 +1,4 @@
 import torch
-import numpy as np
 import torch.backends.cudnn as cudnn
 import torchvision.models as torchmodels
 from torch.utils.data import DataLoader

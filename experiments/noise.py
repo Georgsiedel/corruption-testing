@@ -84,21 +84,22 @@ def get_image_mask(batch, noise_patch_lower_scale=1.0, ratio=[0.3, 3.3]):
 
         return mask
 
-def apply_lp_corruption(batch, minibatchsize, corruptions, concurrent_combinations, normalized, dataset,
-                        manifold=False, manifold_factor=1, sparsity=0.0, noise_patch_lower_scale=1.0):
+def apply_noise(batch, minibatchsize, corruptions, concurrent_combinations, normalized, dataset,
+                        manifold=False, manifold_factor=1, noise_sparsity=0.0, noise_patch_lower_scale=1.0):
 
     #Calculate the mean values for each channel across all images
     mean, std = normalization_values(batch, dataset, normalized, manifold, manifold_factor)
 
-    #Throw out noise outside Gaussian, (L0) and Linf for manifold noise (since epsilon is highly dependent on dimensionality)
+
     if manifold:
+    # Throw out noise outside Gaussian, (L0) and Linf for manifold noise (since epsilon is dependent on dimensionality)
         if not isinstance(corruptions, dict):
-            corruptions = [c for c in corruptions if c.get('noise_type') in {'gaussian', 'uniform-linf', 'standard'}] #, 'uniform-l0-impulse'
+            corruptions = [c for c in corruptions if c.get('noise_type') in {'gaussian', 'uniform-linf', 'standard', 'uniform-l0-impulse'}]
             corruptions = np.array(corruptions)
             if corruptions.size == 0:
                 print('Warning: noise_type of p-norm outside L0 and Linf may not be applicable for manifold noise')
         else:
-            if corruptions.get('noise_type') != ('gaussian' or 'uniform-linf' or 'standard'): #or 'uniform-l0-impulse'
+            if corruptions.get('noise_type') != ('gaussian' or 'uniform-linf' or 'standard' or 'uniform-l0-impulse'):
                 print('Warning: noise_type of p-norm outside L0 and Linf may not be applicable for manifold noise')
 
     minibatches = batch.view(-1, minibatchsize, batch.size()[1], batch.size()[2], batch.size()[3])
@@ -119,12 +120,12 @@ def apply_lp_corruption(batch, minibatchsize, corruptions, concurrent_combinatio
             elif corruption['distribution'] == 'max':
                 d = 1
             else:
-                print('Unknown distribution for epsilon value of p-norm corruption. '
-                      'Chose max-distribution instead, where epsilon is always equal to given epsilon.')
+                print('Unknown distribution for epsilon value of p-norm corruption. Max value chosen instead.')
                 d = 1
             if d == 0: #dist sampling include lower bound but exclude upper, but we do not want eps = 0
                 d = 1
             epsilon = float(d) * float(corruption['epsilon'])
+            sparsity = random.random() * noise_sparsity
             noisy_minibatch = sample_lp_corr_batch(corruption['noise_type'], epsilon, noisy_minibatch, corruption['sphere'], mean, std, manifold, sparsity)
 
         mask = get_image_mask(minibatch, noise_patch_lower_scale = noise_patch_lower_scale, ratio = [0.3, 3.3])
