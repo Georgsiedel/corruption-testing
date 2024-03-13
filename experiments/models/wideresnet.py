@@ -145,3 +145,7 @@ def WideResNet_28_12(num_classes, factor, dataset, normalized, block=WideBasic, 
 def WideResNet_40_10(num_classes, factor, dataset, normalized, block=WideBasic, dropout_rate=0.0, activation_function='relu'):
     return WideResNet(depth=40, widen_factor=10, dataset=dataset, normalized=normalized, dropout_rate=dropout_rate,
                       num_classes=num_classes, factor=factor, block=block, activation_function=activation_function)
+
+def WideResNet_70_16(num_classes, factor, dataset, normalized, block=WideBasic, dropout_rate=0.0, activation_function='relu'):
+    return WideResNet(depth=70, widen_factor=16, dataset=dataset, normalized=normalized, dropout_rate=dropout_rate,
+                      num_classes=num_classes, factor=factor, block=block, activation_function=activation_function)

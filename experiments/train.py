@@ -143,6 +143,8 @@ def train_epoch(pbar):
                                            args.mixup['p'], args.manifold['apply'], args.manifold['noise_factor'],
                                            args.cutmix['alpha'], args.cutmix['p'], args.minibatchsize,
                                            args.concurrent_combinations, args.noise_sparsity, args.noise_patch_lower_scale)
+            if args.loss_function == 'trades':
+                criterion.update(model, optimizer)
             loss = criterion(outputs, mixed_targets)
 
         scaler.scale(loss).backward()

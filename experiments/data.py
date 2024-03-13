@@ -47,10 +47,10 @@ class AugmentedDataset(torch.utils.data.Dataset):
     if self.robust_samples == 0:
       return self.augment(x), y
     elif self.robust_samples == 1:
-      im_tuple = (self.augment(x), self.augment(x)) #(self.preprocess(x), self.augment(x))
+      im_tuple = (self.preprocess(x), self.augment(x))
       return im_tuple, y
     elif self.robust_samples == 2:
-      im_tuple = (self.augment(x), self.augment(x), self.augment(x)) #(self.preprocess(x), self.augment(x), self.augment(x))
+      im_tuple = (self.preprocess(x), self.augment(x), self.augment(x))
       return im_tuple, y
 
   def __len__(self):

@@ -2,7 +2,8 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import torch
-from experiments.jsd_loss import JsdCrossEntropy
+from experiments.losses import JsdCrossEntropy
+from experiments.losses import Trades
 
 def plot_images(images, corrupted_images, number):
     fig, axs = plt.subplots(number, 2)
@@ -39,6 +40,8 @@ def calculate_steps(dataset, batchsize, epochs, warmupepochs, validontest):
 def get_criterion(loss_function, lossparams):
     if loss_function == 'jsd':
         criterion, robust_samples = JsdCrossEntropy(**lossparams), lossparams["num_splits"] - 1
+    elif loss_function == 'trades':
+        criterion, robust_samples = Trades(**lossparams), 0
     else:
         criterion, robust_samples = torch.nn.CrossEntropyLoss(label_smoothing=lossparams["smoothing"]), 0
     test_criterion = torch.nn.CrossEntropyLoss()
