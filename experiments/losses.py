@@ -25,19 +25,20 @@ class Trades(nn.Module):
         self.model = model
         self.optimizer = optimizer
 
-    def __call__(self, x_natural, y):
+    def __call__(self, x_natural, y, outputs, mixed_targets):
         # define KL-loss
         criterion_kl = nn.KLDivLoss(size_average=False)
         self.model.eval()
         batch_size = len(x_natural)
         # generate adversarial example
+        logits_natural = self.model(x_natural)
         x_adv = x_natural.detach() + 0.001 * torch.randn(x_natural.shape).cuda().detach()
         if self.distance == 'l_inf':
             for _ in range(self.perturb_steps):
                 x_adv.requires_grad_()
                 with torch.enable_grad():
                     loss_kl = criterion_kl(F.log_softmax(self.model(x_adv), dim=1),
-                                           F.softmax(self.model(x_natural), dim=1))
+                                           F.softmax(logits_natural, dim=1))
                 grad = torch.autograd.grad(loss_kl, [x_adv])[0]
                 x_adv = x_adv.detach() + self.step_size * torch.sign(grad.detach())
                 x_adv = torch.min(torch.max(x_adv, x_natural - self.epsilon), x_natural + self.epsilon)
@@ -73,17 +74,18 @@ class Trades(nn.Module):
             x_adv = Variable(x_natural + delta, requires_grad=False)
         else:
             x_adv = torch.clamp(x_adv, 0.0, 1.0)
-        self.model.train()
 
         x_adv = Variable(torch.clamp(x_adv, 0.0, 1.0), requires_grad=False)
         # zero gradient
         self.optimizer.zero_grad()
         # calculate robust loss
-        logits = self.model(x_natural)
-        loss_natural = F.cross_entropy(logits, y)
-        loss_robust = (1.0 / batch_size) * criterion_kl(F.log_softmax(self.model(x_adv), dim=1),
-                                                        F.softmax(self.model(x_natural), dim=1))
-        loss = loss_natural + self.beta * loss_robust
+        with torch.enable_grad():
+            loss_natural = F.cross_entropy(outputs, mixed_targets)
+            loss_robust = (1.0 / batch_size) * criterion_kl(F.log_softmax(self.model(x_adv), dim=1),
+                                                        F.softmax(logits_natural, dim=1))
+            loss = loss_natural + self.beta * loss_robust
+
+        self.model.train()
         return loss
 
 class JsdCrossEntropy(nn.Module):
@@ -115,3 +117,4 @@ class JsdCrossEntropy(nn.Module):
         loss += self.alpha * sum([F.kl_div(
             logp_mixture, p_split, reduction='batchmean') for p_split in probs]) / self.num_splits
         return loss
+

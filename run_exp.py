@@ -10,7 +10,7 @@ if __name__ == '__main__':
     os.environ["CUDA_LAUNCH_BLOCKING"] = "1" #prevents "CUDA error: unspecified launch failure" and is recommended for some illegal memory access errors #increases train time by ~5-15%
     #os.environ["CUDA_VISIBLE_DEVICES"] = "1" #this blocks the spawn of multiple workers
 
-    for experiment in [8,11,10,9]:
+    for experiment in [8,6,8,7]:
 
         configname = (f'experiments.configs.config{experiment}')
         config = importlib.import_module(configname)
@@ -34,7 +34,7 @@ if __name__ == '__main__':
                        "--cutmix=\"{}\" --manifold=\"{}\" --combine_train_corruptions={} " \
                        "--concurrent_combinations={} --batchsize={} --number_workers={} --lossparams=\"{}\" " \
                        "--RandomEraseProbability={} --warmupepochs={} --normalize={} --pixel_factor={} --minibatchsize={} " \
-                       "--validonc={} --swa={} --noise_sparsity={} --noise_patch_lower_scale={}"\
+                       "--validonc={} --validonadv={} --swa={} --noise_sparsity={} --noise_patch_lower_scale={}"\
                     .format(resume, run, experiment, config.epochs, config.learningrate, config.dataset, config.validontest,
                             config.lrschedule, config.lrparams, config.earlystop, config.earlystopPatience,
                             config.optimizer, config.optimizerparams, config.modeltype, config.modelparams, config.resize,
@@ -42,7 +42,7 @@ if __name__ == '__main__':
                             config.cutmix, config.manifold, config.combine_train_corruptions, config.concurrent_combinations,
                             config.batchsize, config.number_workers, config.lossparams, config.RandomEraseProbability,
                             config.warmupepochs, config.normalize, config.pixel_factor, config.minibatchsize,
-                            config.validonc, config.swa, config.noise_sparsity, config.noise_patch_lower_scale)
+                            config.validonc, config.validonadv, config.swa, config.noise_sparsity, config.noise_patch_lower_scale)
                 os.system(cmd0)
             else:
                 for id, (train_corruption) in enumerate(config.train_corruptions):
@@ -54,7 +54,7 @@ if __name__ == '__main__':
                            "--mixup=\"{}\" --cutmix=\"{}\" --manifold=\"{}\" --combine_train_corruptions={} " \
                            "--concurrent_combinations={} --batchsize={} --number_workers={} --lossparams=\"{}\" " \
                            "--RandomEraseProbability={} --warmupepochs={} --normalize={} --pixel_factor={} " \
-                           "--minibatchsize={} --validonc={} --swa={} --noise_sparsity={} --noise_patch_lower_scale={}"\
+                           "--minibatchsize={} --validonc={} --validonadv={} --swa={} --noise_sparsity={} --noise_patch_lower_scale={}"\
                         .format(resume, train_corruption, run, experiment, config.epochs, config.learningrate,
                                 config.dataset, config.validontest, config.lrschedule, config.lrparams, config.earlystop,
                                 config.earlystopPatience, config.optimizer, config.optimizerparams, config.modeltype,
@@ -62,7 +62,7 @@ if __name__ == '__main__':
                                 config.loss_function, config.mixup, config.cutmix, config.manifold, config.combine_train_corruptions,
                                 config.concurrent_combinations, config.batchsize, config.number_workers, config.lossparams,
                                 config.RandomEraseProbability, config.warmupepochs, config.normalize, config.pixel_factor,
-                                config.minibatchsize, config.validonc, config.swa, config.noise_sparsity,
+                                config.minibatchsize, config.validonc, config.validonadv, config.swa, config.noise_sparsity,
                                 config.noise_patch_lower_scale)
                     os.system(cmd0)
         # Calculate accuracy and robust accuracy, evaluating each trained network on each corruption

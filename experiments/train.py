@@ -15,6 +15,7 @@ import experiments.checkpoints as checkpoints
 import experiments.utils as utils
 import experiments.models as low_dim_models
 from experiments.eval_corruptions import compute_c_corruptions
+from experiments.eval_adversarial import adv_valid
 
 import torch.backends.cudnn as cudnn
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -112,6 +113,8 @@ parser.add_argument('--minibatchsize', default=8, type=int, help='batchsize, for
                     'corruption is applied for all images in the minibatch')
 parser.add_argument('--validonc', type=str2bool, nargs='?', const=False, default=False,
                     help='Whether to do a validation on a subset of c-data every epoch')
+parser.add_argument('--validonadv', type=str2bool, nargs='?', const=False, default=False,
+                    help='Whether to do a validation with an FGSM adversarial attack every epoch')
 parser.add_argument('--swa', type=str2bool, nargs='?', const=False, default=False,
                     help='Whether to use stochastic weight averaging over the last epochs')
 parser.add_argument('--noise_sparsity', default=0.0, type=float,
@@ -136,7 +139,6 @@ def train_epoch(pbar):
 
         if robust_samples >= 1:
             inputs = torch.cat(inputs, 0)
-
         inputs, targets = inputs.to(device, dtype=torch.float32), targets.to(device)
         with torch.cuda.amp.autocast():
             outputs, mixed_targets = model(inputs, targets, robust_samples, train_corruptions, args.mixup['alpha'],
@@ -145,7 +147,9 @@ def train_epoch(pbar):
                                            args.concurrent_combinations, args.noise_sparsity, args.noise_patch_lower_scale)
             if args.loss_function == 'trades':
                 criterion.update(model, optimizer)
-            loss = criterion(outputs, mixed_targets)
+                loss = criterion(inputs, targets, outputs, mixed_targets)
+            else:
+                loss = criterion(outputs, mixed_targets)
 
         scaler.scale(loss).backward()
         scaler.unscale_(optimizer)
@@ -174,15 +178,21 @@ def train_epoch(pbar):
 def valid_epoch(pbar, net):
     net.eval()
     with torch.no_grad():
-        test_loss, correct, total, avg_test_loss = 0, 0, 0, 0
+        test_loss, correct, total, avg_test_loss, adv_acc, acc_c, adv_correct = 0, 0, 0, 0, 0, 0, 0
 
         for batch_idx, (inputs, targets) in enumerate(validationloader):
 
             inputs, targets = inputs.to(device, dtype=torch.float32), targets.to(device)
 
             with torch.cuda.amp.autocast():
-                outputs = net(inputs)
-                loss = test_criterion(outputs, targets)
+
+                if args.validonadv == True:
+                    adv_outputs, outputs, loss = adv_valid(inputs, targets, 4/255, net, test_criterion)
+                    _, adv_predicted = adv_outputs.max(1)
+                    adv_correct += adv_predicted.eq(targets).sum().item()
+                else:
+                    outputs = net(inputs)
+                    loss = test_criterion(outputs, targets)
 
             test_loss += loss.item()
             _, predicted = outputs.max(1)
@@ -190,20 +200,20 @@ def valid_epoch(pbar, net):
             correct += predicted.eq(targets).sum().item()
             avg_test_loss = test_loss / (batch_idx + 1)
             pbar.set_description(
-                '[Valid] Loss: {:.3f} | Acc: {:.3f} ({}/{})'.format(avg_test_loss, 100. * correct / total,
-                                                                    correct, total))
+                '[Valid] Loss: {:.3f} | Acc: {:.3f} ({}/{}) | Adversarial Acc: {:.3f}'.format(avg_test_loss, 100. * correct / total,
+                                                                    correct, total, 100. * adv_correct / total))
             pbar.update(1)
 
-        pbar.set_description(
-            '[Valid] Robust Accuracy Calculation. Last Robust Accuracy: {:.3f}'.format(valid_accs_robust[-1] if valid_accs_robust else 0))
-        acc_c = compute_c_corruptions(args.dataset, testsets_c, net, batchsize=200,
-                                      num_classes=num_classes, eval_run = True)[0] if args.validonc == True else 0
+        if args.validonc == True:
+            pbar.set_description(
+                '[Valid] Robust Accuracy Calculation. Last Robust Accuracy: {:.3f}'.format(valid_accs_robust[-1] if valid_accs_robust else 0))
+            acc_c = compute_c_corruptions(args.dataset, testsets_c, net, batchsize=200,
+                                          num_classes=num_classes, eval_run = True)[0]
         pbar.update(1)
 
-
-
     acc = 100. * correct / total
-    return acc, avg_test_loss, acc_c
+    adv_acc = 100. * adv_correct / total
+    return acc, avg_test_loss, acc_c, adv_acc
 
 if __name__ == '__main__':
     # Load and transform data
@@ -248,7 +258,7 @@ if __name__ == '__main__':
 
     # Some necessary parameters
     total_steps = utils.calculate_steps(args.dataset, args.batchsize, args.epochs, args.warmupepochs, args.validontest)
-    train_accs, train_losses, valid_accs, valid_losses, valid_accs_robust, valid_accs_swa, valid_accs_robust_swa = [], [], [], [], [], [], []
+    train_accs, train_losses, valid_accs, valid_losses, valid_accs_robust, valid_accs_adv, valid_accs_swa, valid_accs_robust_swa = [], [], [], [], [], [], [], []
     training_folder = 'combined' if args.combine_train_corruptions == True else 'separate'
     filename_spec = str(f"_{args.noise}_eps_{args.epsilon}_{args.max}_" if
                         args.combine_train_corruptions == False else f"_")
@@ -261,8 +271,8 @@ if __name__ == '__main__':
             start_epoch, swa_model, optimizer, scheduler = Checkpointer._load_model(swa_model, optimizer, scheduler, 'swa_checkpoint')
         print('\nResuming from checkpoint at epoch', start_epoch)
         # load prior learning curve values
-        train_accs, train_losses, valid_accs, valid_losses, valid_accs_robust, valid_accs_swa, valid_accs_robust_swa = utils.load_learning_curves(args.dataset,
-                        args.modeltype, args.lrschedule, args.experiment, args.run, training_folder, filename_spec, args.validonc, args.swa)
+        train_accs, train_losses, valid_accs, valid_losses, valid_accs_robust, valid_accs_adv, valid_accs_swa, valid_accs_robust_swa = utils.load_learning_curves(args.dataset,
+                        args.modeltype, args.lrschedule, args.experiment, args.run, training_folder, filename_spec, args.validonc, args.validonadv, args.swa)
 
     # Training loop
     with tqdm(total=total_steps) as pbar:
@@ -270,10 +280,11 @@ if __name__ == '__main__':
             # check_nan=True increases 32bit precision train time by ~20% and causes errors due to nan values for mixed precision training.
             for epoch in range(start_epoch, end_epoch):
                 train_acc, train_loss = train_epoch(pbar)
-                valid_acc, valid_loss, acc_c = valid_epoch(pbar, model)
+                valid_acc, valid_loss, acc_c, acc_adv = valid_epoch(pbar, model)
                 train_accs.append(train_acc)
                 valid_accs.append(valid_acc)
                 valid_accs_robust.append(acc_c)
+                valid_accs_adv.append(acc_adv)
                 train_losses.append(train_loss)
                 valid_losses.append(valid_loss)
 
@@ -295,8 +306,8 @@ if __name__ == '__main__':
                 if args.swa == True:
                     Checkpointer._save_swa_checkpoint(swa_model, optimizer, swa_scheduler, epoch)
                 utils.save_learning_curves(args.dataset, args.modeltype, args.lrschedule, args.experiment, args.run,
-                                           train_accs, valid_accs, valid_accs_robust, valid_accs_swa,
-                                           valid_accs_robust_swa, args.swa, args.validonc, train_losses, valid_losses,
+                                           train_accs, valid_accs, valid_accs_robust, valid_accs_adv, valid_accs_swa,
+                                           valid_accs_robust_swa, args.swa, args.validonc, args.validonadv, train_losses, valid_losses,
                                            training_folder, filename_spec)
                 if Checkpointer.early_stop:
                     end_epoch = epoch

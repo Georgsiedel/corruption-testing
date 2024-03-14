@@ -2,14 +2,102 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 import torch
+import torchattacks
+
 device = "cuda" if torch.cuda.is_available() else "cpu"
 import numpy as np
 from torch.utils.data import DataLoader
 from cleverhans.torch.attacks.projected_gradient_descent import projected_gradient_descent
 from autoattack import AutoAttack
-from art.estimators.classification import PyTorchClassifier
+from art.estimators.classification.pytorch import PyTorchClassifier
 from art.metrics import clever_u, clever_t
 import matplotlib.pyplot as plt
+from cleverhans.torch.utils import optimize_linear
+
+def fast_gradient_validation(
+    model_fn,
+    x,
+    eps,
+    norm,
+    valid_loss,
+    clip_min=None,
+    clip_max=None,
+    y=None,
+    targeted=False,
+    sanity_checks=False,
+):
+    """
+    PyTorch implementation of the Fast Gradient Method. from Cleverhans package
+    """
+
+    if norm not in [np.inf, 1, 2]:
+        raise ValueError(
+            "Norm order must be either np.inf, 1, or 2, got {} instead.".format(norm)
+        )
+    if eps < 0:
+        raise ValueError(
+            "eps must be greater than or equal to 0, got {} instead".format(eps)
+        )
+    if eps == 0:
+        return x
+    if clip_min is not None and clip_max is not None:
+        if clip_min > clip_max:
+            raise ValueError(
+                "clip_min must be less than or equal to clip_max, got clip_min={} and clip_max={}".format(
+                    clip_min, clip_max
+                )
+            )
+
+    asserts = []
+
+    # If a data range was specified, check that the input was in that range
+    if clip_min is not None:
+        assert_ge = torch.all(
+            torch.ge(x, torch.tensor(clip_min, device=x.device, dtype=x.dtype))
+        )
+        asserts.append(assert_ge)
+
+    if clip_max is not None:
+        assert_le = torch.all(
+            torch.le(x, torch.tensor(clip_max, device=x.device, dtype=x.dtype))
+        )
+        asserts.append(assert_le)
+
+    if y is None:
+        # Using model predictions as ground truth to avoid label leaking
+        _, y = torch.max(model_fn(x), 1)
+
+    # If attack is targeted, minimize loss of target label rather than maximize loss of correct label
+    if targeted:
+        valid_loss = -valid_loss
+
+    # Define gradient of loss wrt input
+    valid_loss.backward()
+    optimal_perturbation = optimize_linear(x.grad, eps, norm)
+
+    # Add perturbation to original example to obtain adversarial example
+    adv_x = x + optimal_perturbation
+
+    # If clipping is needed, reset all values outside of [clip_min, clip_max]
+    if (clip_min is not None) or (clip_max is not None):
+        if clip_min is None or clip_max is None:
+            raise ValueError(
+                "One of clip_min and clip_max is None but we don't currently support one-sided clipping"
+            )
+        adv_x = torch.clamp(adv_x, clip_min, clip_max)
+
+    if sanity_checks:
+        assert np.all(asserts)
+    return adv_x
+
+def adv_valid(inputs, labels, epsilon, model, criterion):
+    inputs.requires_grad_()
+    with torch.torch.enable_grad():
+        outputs = model(inputs)
+        loss = criterion(outputs, labels)
+        adv_inputs = fast_gradient_validation(model_fn=model, eps=epsilon, x=inputs, y=labels, norm=np.inf, valid_loss=loss)
+        adv_outputs = model(adv_inputs)
+    return adv_outputs, outputs, loss
 
 def pgd_with_early_stopping(model, inputs, labels, clean_predicted, eps, number_iterations, epsilon_iters, norm):
 

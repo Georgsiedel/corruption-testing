@@ -23,6 +23,7 @@ dataset = 'CIFAR100' #ImageNet #CIFAR100 #CIFAR10 #TinyImageNet
 normalize = True
 validontest = True
 validonc = True
+validonadv = False
 lrschedule = 'CosineAnnealingWarmRestarts'
 learningrate = 0.15
 epochs = 375
