@@ -80,7 +80,10 @@ class ResNeXt(ct_model.CtModel):
         out = F.avg_pool2d(out, 8)
         out = out.view(out.size(0), -1)
         out = self.linear(out)
-        return out
+        if self.training == True:
+            return out, mixed_targets
+        else:
+            return out
 
 
 def ResNeXt29_2x64d(dataset, normalized, num_classes, factor, activation_function='relu'):

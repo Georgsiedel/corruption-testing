@@ -56,7 +56,6 @@ class RandomMixup(torch.nn.Module):
         if not self.inplace:
             batch = batch.clone()
             target = target.clone()
-
         if target.ndim == 1:
             target = torch.nn.functional.one_hot(target, num_classes=self.num_classes).to(dtype=batch.dtype)
 
@@ -69,11 +68,11 @@ class RandomMixup(torch.nn.Module):
         for id, b in enumerate(batches):
 
             # It's faster to roll the batch by one instead of shuffling it to create image pairs
-            batch_rolled = batch.roll(1, 0)
+            b_rolled = b.roll(1, 0)
 
             # Implemented as on mixup paper, page 3.
-            batch_rolled.mul_(1.0 - lambda_param)
-            batch.mul_(lambda_param).add_(batch_rolled)
+            b_rolled.mul_(1.0 - lambda_param)
+            b = b*lambda_param + b_rolled
 
             batches[id] = b
 
@@ -82,7 +81,6 @@ class RandomMixup(torch.nn.Module):
         target_rolled = target.roll(1, 0)
         target_rolled.mul_(1.0 - lambda_param)
         target.mul_(lambda_param).add_(target_rolled)
-
         return batch, target
 
     def __repr__(self) -> str:
@@ -174,16 +172,16 @@ class RandomCutmix(torch.nn.Module):
 
             #It's faster to roll the batch by one instead of shuffling it to create image pairs
             batch_rolled = b.roll(1, 0)
-            b[:, :, y1:y2, x1:x2] = batch_rolled[:, :, y1:y2, x1:x2]
+            b_clone = b.clone()
+            b_clone[:, :, y1:y2, x1:x2] = batch_rolled[:, :, y1:y2, x1:x2]
             batches[id] = b
 
         batch = batches.view(-1, batch.size()[1], batch.size()[2], batch.size()[3])
 
         target_rolled = target.roll(1, 0)
-        target_rolled.mul_(1.0 - lambda_param)
-        target.mul_(lambda_param).add_(target_rolled)
+        target_weighted = target*lambda_param + target_rolled * (1.0 - lambda_param)
 
-        return batch, target
+        return batch, target_weighted
 
     def __repr__(self) -> str:
         s = (

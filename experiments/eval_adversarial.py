@@ -2,7 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 import torch
-import torchattacks
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 import numpy as np
@@ -14,21 +13,11 @@ from art.metrics import clever_u, clever_t
 import matplotlib.pyplot as plt
 from cleverhans.torch.utils import optimize_linear
 
-def fast_gradient_validation(
-    model_fn,
-    x,
-    eps,
-    norm,
-    valid_loss,
-    clip_min=None,
-    clip_max=None,
-    y=None,
-    targeted=False,
-    sanity_checks=False,
-):
-    """
-    PyTorch implementation of the Fast Gradient Method. from Cleverhans package
-    """
+
+def fast_gradient_validation(model_fn, x, eps, norm, criterion, clip_min=None, clip_max=None, y=None, targeted=False,
+    sanity_checks=False):
+
+    """PyTorch implementation of the Fast Gradient Method. from Cleverhans package"""
 
     if norm not in [np.inf, 1, 2]:
         raise ValueError(
@@ -63,17 +52,26 @@ def fast_gradient_validation(
         )
         asserts.append(assert_le)
 
-    if y is None:
-        # Using model predictions as ground truth to avoid label leaking
-        _, y = torch.max(model_fn(x), 1)
+    # x needs to be a leaf variable, of floating point type and have requires_grad being True for
+    # its grad to be computed and stored properly in a backward call
+    x = x.clone().detach().to(torch.float).requires_grad_(True)
 
-    # If attack is targeted, minimize loss of target label rather than maximize loss of correct label
-    if targeted:
-        valid_loss = -valid_loss
+    with torch.enable_grad():
+        if y is None:
+            # Using model predictions as ground truth to avoid label leaking
+            outputs = model_fn(x)
+            _, y = torch.max(outputs, 1)
 
-    # Define gradient of loss wrt input
-    valid_loss.backward()
-    optimal_perturbation = optimize_linear(x.grad, eps, norm)
+        # Compute loss
+        loss = criterion.test(model_fn(x), y)
+
+        # If attack is targeted, minimize loss of target label rather than maximize loss of correct label
+        if targeted:
+            loss = -loss
+
+        # Define gradient of loss wrt input
+        loss.backward()
+        optimal_perturbation = optimize_linear(x.grad, eps, norm)
 
     # Add perturbation to original example to obtain adversarial example
     adv_x = x + optimal_perturbation
@@ -88,16 +86,7 @@ def fast_gradient_validation(
 
     if sanity_checks:
         assert np.all(asserts)
-    return adv_x
-
-def adv_valid(inputs, labels, epsilon, model, criterion):
-    inputs.requires_grad_()
-    with torch.torch.enable_grad():
-        outputs = model(inputs)
-        loss = criterion(outputs, labels)
-        adv_inputs = fast_gradient_validation(model_fn=model, eps=epsilon, x=inputs, y=labels, norm=np.inf, valid_loss=loss)
-        adv_outputs = model(adv_inputs)
-    return adv_outputs, outputs, loss
+    return adv_x, outputs
 
 def pgd_with_early_stopping(model, inputs, labels, clean_predicted, eps, number_iterations, epsilon_iters, norm):
 
@@ -122,8 +111,7 @@ def pgd_with_early_stopping(model, inputs, labels, clean_predicted, eps, number_
     return adv_inputs, adv_predicted
 
 def adv_distance(testloader, model, number_iterations, epsilon, eps_iter, norm, setsize):
-    distance_list_1, image_idx_1 = [], []
-    distance_list_2, image_idx_2 = [], []
+    distance_list_1, image_idx_1, distance_list_2, image_idx_2 = [], [], [], []
     model.eval()
     correct, total = 0, 0
     for i, (inputs, labels) in enumerate(testloader):
@@ -139,14 +127,13 @@ def adv_distance(testloader, model, number_iterations, epsilon, eps_iter, norm, 
             distance_list_2.append(distance) #only originally correctly classified distances are counted
             image_idx_2.append(i) #only originally correctly classified points
         else:
-            distance_list_1.append(torch.tensor([0.0])) #originally misclassified distances are counted as 0
+            distance_list_1.append(torch.tensor(0.0, device=device)) #originally misclassified distances are counted as 0
             image_idx_1.append(i) #all points, also originally misclassified ones
 
         correct += (adv_predicted == labels).sum().item()
         total += labels.size(0)
         if (i+1) % 20 == 0:
             print(f"Completed: {i+1} of {setsize}, mean_distances: {sum(distance_list_1)/len(distance_list_1)}, {sum(distance_list_2)/len(distance_list_2)}, correct: {correct}, total: {total}, accuracy: {correct / total * 100}%")
-    print(distance_list_1)
     adv_acc = correct / total
     return distance_list_1, image_idx_1, distance_list_2, image_idx_2, adv_acc
 
@@ -200,34 +187,33 @@ def compute_adv_distance(testset, workers, model, adv_distance_params):
     dst1, idx1, dst2, idx2, adv_acc = adv_distance(testloader=truncated_testloader, model=model,
         number_iterations=nb_iters, epsilon=epsilon, eps_iter=eps_iter, norm=norm, setsize=adv_distance_params["setsize"])
     mean_dist1, mean_dist2 = [np.asarray(torch.tensor(d).cpu()).mean() for d in [dst1, dst2]]
-    adv_dist_list = np.asarray([t.item() for t in dst1])
-    sorted_indices = np.argsort(adv_dist_list)
-    adv_distance_sorted = adv_dist_list[sorted_indices]
+    adv_dist_list1 = np.asarray([t.item() for t in dst1])
+    sorted_indices1 = np.argsort(adv_dist_list1)
+    adv_distance_sorted1 = adv_dist_list1[sorted_indices1]
 
     if adv_distance_params['clever'] == True:
         print(f"{norm}-Adversarial Distance (statistical) lower bound calculation using Clever Score with "
               f"{clever_batches} batches with {clever_samples} samples each.")
         clever_scores, clever_id = clever_score(testloader=truncated_testloader, model=model, clever_batches=clever_batches,
                              clever_samples=clever_samples, epsilon=epsilon, norm=norm, num_classes=num_classes)
-        clever_scores_sorted = np.asarray(clever_scores)[sorted_indices]
-        mean_clever_score = np.asarray(torch.tensor(clever_scores).cpu()).mean()
+        clever_scores_sorted = np.asarray(clever_scores)[sorted_indices1] if adv_distance_params['clever'] == True else [0.0]
+        mean_clever_score = np.asarray(torch.tensor(clever_scores).cpu()).mean() if adv_distance_params['clever'] == True else 0.0
+        print(f'Mean CLEVER score: {mean_clever_score}')
     else:
         mean_clever_score = 0.0
-    plt.figure(figsize=(15, 5))
-    plt.scatter(range(len(adv_distance_sorted)), adv_distance_sorted, s=3, label="PGD Adversarial Distance")
+    fig = plt.figure(figsize=(15, 5))
+    plt.scatter(range(len(adv_distance_sorted1)), adv_distance_sorted1, s=3, label="PGD Adversarial Distance")
     if adv_distance_params['clever'] == True:
         plt.scatter(range(len(clever_scores_sorted)), clever_scores_sorted, s=3, label="Clever Score")
     plt.xlabel("Sorted Image ID")
     plt.ylabel("Distance")
     plt.legend()
-    #plt.show()
-    #plt.savefig(f'results/{dataset}/{modeltype}/config{experiment}_{lrschedule}_{training_folder}_learning_curve'
-    #            f'{filename_spec}run_{run}.svg')
+    plt.show()
     #plt.close()
 
-    return adv_acc*100, mean_dist1, mean_dist2, mean_clever_score
+    return adv_acc*100, mean_dist1, mean_dist2, mean_clever_score, fig, clever_scores_sorted, adv_distance_sorted1
 
-def compute_adv_acc(autoattack_params, testset, model, workers, batchsize=50):
+def compute_adv_acc(autoattack_params, testset, model, workers, batchsize=10):
     print(f"{autoattack_params['norm']} Adversarial Accuracy calculation using AutoAttack attack "
           f"with epsilon={autoattack_params['epsilon']}")
     truncated_testset, _ = torch.utils.data.random_split(testset, [autoattack_params["setsize"],

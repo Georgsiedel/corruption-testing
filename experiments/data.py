@@ -126,6 +126,7 @@ def load_data_c(dataset, testset, resize, test_transforms, subset, subsetsize):
             np_data_c = np.load(f'./experiments/data/{dataset}-c/{corruption}.npy')
             np_data_c = np.array(np.array_split(np_data_c, 5))
             if subset == True:
+                np.random.seed(0)
                 selected_indices = np.random.choice(10000, subsetsize, replace=False)
                 subtestset = Subset(testset, selected_indices)
                 np_data_c = [intensity_dataset[selected_indices] for intensity_dataset in np_data_c]

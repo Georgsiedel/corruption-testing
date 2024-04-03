@@ -3,7 +3,6 @@ import ast
 import importlib
 import numpy as np
 from tqdm import tqdm
-import shutil
 import torch.cuda.amp
 import torch.optim as optim
 from torch.utils.data import DataLoader
@@ -11,13 +10,14 @@ from torch.optim.swa_utils import AveragedModel, SWALR
 import torchvision.models as torchmodels
 
 import experiments.data as data
-import experiments.checkpoints as checkpoints
 import experiments.utils as utils
+import experiments.losses as losses
 import experiments.models as low_dim_models
 from experiments.eval_corruptions import compute_c_corruptions
-from experiments.eval_adversarial import adv_valid
+from experiments.eval_adversarial import fast_gradient_validation
 
 import torch.backends.cudnn as cudnn
+torch.cuda.empty_cache()
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 #torch.backends.cudnn.enabled = False #this may resolve some cuDNN errors, but increases training time by ~200%
 torch.cuda.set_device(0)
@@ -50,7 +50,7 @@ class str2dictAction(argparse.Action):
 parser = argparse.ArgumentParser(description='PyTorch Training with perturbations')
 parser.add_argument('--resume', type=str2bool, nargs='?', const=False, default=False,
                     help='resuming from saved checkpoint in fixed-path repo defined below')
-parser.add_argument('--traincorruptions', default={'noise_type': 'standard', 'epsilon': 0.0, 'sphere': False, 'distribution': 'max'},
+parser.add_argument('--train_corruptions', default={'noise_type': 'standard', 'epsilon': 0.0, 'sphere': False, 'distribution': 'max'},
                     type=str, action=str2dictAction, metavar='KEY=VALUE', help='dictionary for type of noise, epsilon value, '
                     'whether it is always the maximum noise value and a distribution from which various epsilon are sampled')
 parser.add_argument('--run', default=0, type=int, help='run number')
@@ -82,8 +82,18 @@ parser.add_argument('--resize', type=str2bool, nargs='?', const=False, default=F
 parser.add_argument('--aug_strat_check', type=str2bool, nargs='?', const=True, default=False,
                     help='Whether to use an auto-augmentation scheme')
 parser.add_argument('--train_aug_strat', default='TrivialAugmentWide', type=str, help='auto-augmentation scheme')
-parser.add_argument('--loss_function', default='ce', type=str, help='loss function to use. ce for Cross Entropy,'
-                    'jsd for Jensen-Shannon Divergence loss, more to come')
+parser.add_argument('--loss', default='CrossEntropyLoss', type=str, help='loss function to use, chosen from torch.nn loss functions')
+parser.add_argument('--lossparams', default={}, type=str, action=str2dictAction, metavar='KEY=VALUE',
+                    help='parameters for the standard loss function')
+parser.add_argument('--trades_loss', type=str2bool, nargs='?', const=False, default=False,
+                    help='whether or not to use trades loss for training')
+parser.add_argument('--trades_lossparams',
+                    default={'step_size': 0.003, 'epsilon': 0.031, 'perturb_steps': 10, 'beta': 1.0, 'distance': 'l_inf'},
+                    type=str, action=str2dictAction, metavar='KEY=VALUE', help='parameters for the trades loss function')
+parser.add_argument('--robust_loss', type=str2bool, nargs='?', const=False, default=False,
+                    help='whether or not to use robust (JSD/stability) loss for training')
+parser.add_argument('--robust_lossparams', default={'num_splits': 3, 'alpha': 12}, type=str, action=str2dictAction,
+                    metavar='KEY=VALUE', help='parameters for the robust loss function. If 3, JSD will be used.')
 parser.add_argument('--mixup', default={'alpha': 0.2, 'p': 0.0}, type=str, action=str2dictAction, metavar='KEY=VALUE',
                     help='Mixup parameters, Pytorch suggests 0.2 for alpha. Mixup, Cutmix and RandomErasing are randomly '
                     'chosen without overlapping based on their probability, even if the sum of the probabilities is >1')
@@ -98,8 +108,6 @@ parser.add_argument('--concurrent_combinations', default=1, type=int, help='How 
                     'be applied at once on one image. USe only if you defined multiple training noise values.')
 parser.add_argument('--number_workers', default=4, type=int, help='How many workers are launched to parallelize data '
                     'loading. Experimental. 4 for ImageNet, 1 for Cifar. More demand GPU memory, but maximize GPU usage.')
-parser.add_argument('--lossparams', default={'num_splits': 3, 'alpha': 12, 'smoothing': 0}, type=str, action=str2dictAction, metavar='KEY=VALUE',
-                    help='parameters for the JSD loss function')
 parser.add_argument('--RandomEraseProbability', default=0.0, type=float,
                     help='probability of applying random erasing to an image')
 parser.add_argument('--warmupepochs', default=5, type=int,
@@ -137,23 +145,24 @@ def train_epoch(pbar):
     for batch_idx, (inputs, targets) in enumerate(trainloader):
         optimizer.zero_grad()
 
-        if robust_samples >= 1:
+        if criterion.robust_samples >= 1:
             inputs = torch.cat(inputs, 0)
         inputs, targets = inputs.to(device, dtype=torch.float32), targets.to(device)
         with torch.cuda.amp.autocast():
-            outputs, mixed_targets = model(inputs, targets, robust_samples, train_corruptions, args.mixup['alpha'],
+            outputs, mixed_targets = model(inputs, targets, criterion.robust_samples, train_corruptions, args.mixup['alpha'],
                                            args.mixup['p'], args.manifold['apply'], args.manifold['noise_factor'],
                                            args.cutmix['alpha'], args.cutmix['p'], args.minibatchsize,
                                            args.concurrent_combinations, args.noise_sparsity, args.noise_patch_lower_scale)
-            if args.loss_function == 'trades':
-                criterion.update(model, optimizer)
-                loss = criterion(inputs, targets, outputs, mixed_targets)
-            else:
-                loss = criterion(outputs, mixed_targets)
+            criterion.update(model, optimizer)
+            loss = criterion(outputs, mixed_targets, inputs, targets)
+        loss.retain_grad()
 
         scaler.scale(loss).backward()
+
         scaler.unscale_(optimizer)
-        torch.nn.utils.clip_grad_value_(model.parameters(), clip_value=1)
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0, norm_type=2.0)
+        #for name, param in model.named_parameters():
+        #        print(name, param.grad)
         scaler.step(optimizer)
         scaler.update()
         torch.cuda.synchronize()
@@ -162,8 +171,8 @@ def train_epoch(pbar):
         _, predicted = outputs.max(1)
         if np.ndim(mixed_targets) == 2:
             _, mixed_targets = mixed_targets.max(1)
-        if robust_samples >= 1:
-            mixed_targets = torch.cat([mixed_targets] * (robust_samples+1), 0)
+        if criterion.robust_samples >= 1:
+            mixed_targets = torch.cat([mixed_targets] * (criterion.robust_samples+1), 0)
 
         total += mixed_targets.size(0)
         correct += predicted.eq(mixed_targets).sum().item()
@@ -187,12 +196,13 @@ def valid_epoch(pbar, net):
             with torch.cuda.amp.autocast():
 
                 if args.validonadv == True:
-                    adv_outputs, outputs, loss = adv_valid(inputs, targets, 4/255, net, test_criterion)
-                    _, adv_predicted = adv_outputs.max(1)
+                    adv_inputs, outputs = fast_gradient_validation(model_fn=model, eps=8/255, x=inputs, y=None, norm=np.inf, criterion=criterion)
+                    _, adv_predicted = model(adv_inputs).max(1)
                     adv_correct += adv_predicted.eq(targets).sum().item()
                 else:
                     outputs = net(inputs)
-                    loss = test_criterion(outputs, targets)
+
+                loss = criterion.test(outputs, targets)
 
             test_loss += loss.item()
             _, predicted = outputs.max(1)
@@ -219,20 +229,20 @@ if __name__ == '__main__':
     # Load and transform data
     print('Preparing data..')
     transforms_preprocess, transforms_augmentation = data.create_transforms(args.dataset, args.aug_strat_check, args.train_aug_strat, args.resize, args.RandomEraseProbability)
-    criterion, test_criterion, robust_samples = utils.get_criterion(args.loss_function, args.lossparams)
-    trainset, validset, testset, num_classes = data.load_data(transforms_preprocess, args.dataset, args.validontest, transforms_augmentation, run=args.run, robust_samples=robust_samples)
+    lossparams = args.trades_lossparams | args.robust_lossparams | args.lossparams
+    criterion = losses.Criterion(args.loss, trades_loss=args.trades_loss, robust_loss=args.robust_loss, **lossparams)
+    trainset, validset, testset, num_classes = data.load_data(transforms_preprocess, args.dataset, args.validontest, transforms_augmentation, run=args.run, robust_samples=criterion.robust_samples)
     testsets_c = data.load_data_c(args.dataset, testset, args.resize, transforms_preprocess, args.validonc, subsetsize=200)
     trainloader = DataLoader(trainset, batch_size=args.batchsize, shuffle=True, pin_memory=True, collate_fn=None, num_workers=args.number_workers)
     validationloader = DataLoader(validset, batch_size=args.batchsize, shuffle=True, pin_memory=True, num_workers=args.number_workers)
 
     # Construct model
     print(f'\nBuilding {args.modeltype} model with {args.modelparams} | Augmentation strategy: {args.aug_strat_check}'
-          f' | Loss Function: {args.loss_function}')
+          f' | Loss Function: {args.loss}')
     if args.dataset == 'CIFAR10' or 'CIFAR100' or 'TinyImageNet':
         model_class = getattr(low_dim_models, args.modeltype)
         model = model_class(dataset=args.dataset, normalized =args.normalize, num_classes=num_classes,
                             factor=args.pixel_factor, **args.modelparams)
-
     else:
         model_class = getattr(torchmodels, args.modeltype)
         model = model_class(num_classes = num_classes, **args.modelparams)
@@ -250,29 +260,28 @@ if __name__ == '__main__':
         swa_model = AveragedModel(model)
         swa_start = args.epochs * 0.9
         swa_scheduler = SWALR(optimizer, anneal_strategy="linear", anneal_epochs=5, swa_lr=args.learningrate / 10)
-    scaler = torch.cuda.amp.GradScaler()
-    Checkpointer = checkpoints.Checkpoint(earlystopping=args.earlystop, patience=args.earlystopPatience, verbose=False,
-                                          model_path='experiments/trained_models/checkpoint.pt',
-                                          swa_model_path='experiments/trained_models/swa_checkpoint.pt',
-                                          best_model_path = 'experiments/trained_models/best_checkpoint.pt')
+    Scaler = torch.cuda.amp.GradScaler()
+    Checkpointer = utils.Checkpoint(earlystopping=args.earlystop, patience=args.earlystopPatience, verbose=False,
+                                        model_path='experiments/trained_models/checkpoint.pt',
+                                        swa_model_path='experiments/trained_models/swa_checkpoint.pt',
+                                        best_model_path = 'experiments/trained_models/best_checkpoint.pt',
+                                        final_model_path=f'./experiments/trained_models/{args.dataset}/{args.modeltype}/'
+                                                         f'config{args.experiment}_run_{args.run}.pth'
+                                        )
+    Traintracker = utils.TrainTracking(args.dataset, args.modeltype, args.lrschedule, args.experiment, args.run,
+                            args.combine_train_corruptions, args.validonc, args.validonadv, args.swa, train_corruptions)
 
-    # Some necessary parameters
+    # Calculate steps and epochs
     total_steps = utils.calculate_steps(args.dataset, args.batchsize, args.epochs, args.warmupepochs, args.validontest)
-    train_accs, train_losses, valid_accs, valid_losses, valid_accs_robust, valid_accs_adv, valid_accs_swa, valid_accs_robust_swa = [], [], [], [], [], [], [], []
-    training_folder = 'combined' if args.combine_train_corruptions == True else 'separate'
-    filename_spec = str(f"_{args.noise}_eps_{args.epsilon}_{args.max}_" if
-                        args.combine_train_corruptions == False else f"_")
     start_epoch, end_epoch = 0, args.epochs
 
     # Resume from checkpoint
     if args.resume == True:
-        start_epoch, model, optimizer, scheduler = Checkpointer._load_model(model, optimizer, scheduler, 'checkpoint')
+        start_epoch, model, optimizer, scheduler = Checkpointer.load_model(model, optimizer, scheduler, 'checkpoint')
+        Traintracker.load_learning_curves()
         if args.swa == True:
-            start_epoch, swa_model, optimizer, scheduler = Checkpointer._load_model(swa_model, optimizer, scheduler, 'swa_checkpoint')
+            start_epoch, swa_model, optimizer, swa_scheduler = Checkpointer.load_model(swa_model, optimizer, scheduler, 'swa_checkpoint')
         print('\nResuming from checkpoint at epoch', start_epoch)
-        # load prior learning curve values
-        train_accs, train_losses, valid_accs, valid_losses, valid_accs_robust, valid_accs_adv, valid_accs_swa, valid_accs_robust_swa = utils.load_learning_curves(args.dataset,
-                        args.modeltype, args.lrschedule, args.experiment, args.run, training_folder, filename_spec, args.validonc, args.validonadv, args.swa)
 
     # Training loop
     with tqdm(total=total_steps) as pbar:
@@ -280,35 +289,28 @@ if __name__ == '__main__':
             # check_nan=True increases 32bit precision train time by ~20% and causes errors due to nan values for mixed precision training.
             for epoch in range(start_epoch, end_epoch):
                 train_acc, train_loss = train_epoch(pbar)
-                valid_acc, valid_loss, acc_c, acc_adv = valid_epoch(pbar, model)
-                train_accs.append(train_acc)
-                valid_accs.append(valid_acc)
-                valid_accs_robust.append(acc_c)
-                valid_accs_adv.append(acc_adv)
-                train_losses.append(train_loss)
-                valid_losses.append(valid_loss)
+                valid_acc, valid_loss, valid_acc_robust, valid_acc_adv = valid_epoch(pbar, model)
 
                 if args.lrschedule == 'ReduceLROnPlateau':
                     scheduler.step(valid_loss)
-                elif args.swa == True and epoch > swa_start:
-                    swa_model.update_parameters(model)
-                    swa_scheduler.step()
-                    valid_acc_swa, valid_loss_swa, acc_c_swa = valid_epoch(pbar, swa_model)
                 else:
                     scheduler.step()
-                    valid_acc_swa, acc_c_swa = valid_acc, acc_c
-                valid_accs_swa.append(valid_acc_swa)
-                valid_accs_robust_swa.append(acc_c_swa)
+
+                if args.swa == True and epoch > swa_start:
+                    swa_model.update_parameters(model)
+                    swa_scheduler.step()
+                    valid_acc_swa, valid_loss_swa, valid_acc_robust_swa, valid_acc_adv_swa = valid_epoch(pbar, swa_model)
+                else:
+                    valid_acc_swa, valid_acc_robust_swa, valid_acc_adv_swa = valid_acc, valid_acc_robust, valid_acc_adv
 
                 # Check for best model, save model(s) and learning curve and check for earlystopping conditions
-                Checkpointer._earlystopping(valid_acc)
-                Checkpointer._save_checkpoint(model, optimizer, scheduler, epoch)
+                Checkpointer.earlystopping(valid_acc)
+                Checkpointer.save_checkpoint(model, optimizer, scheduler, epoch)
                 if args.swa == True:
-                    Checkpointer._save_swa_checkpoint(swa_model, optimizer, swa_scheduler, epoch)
-                utils.save_learning_curves(args.dataset, args.modeltype, args.lrschedule, args.experiment, args.run,
-                                           train_accs, valid_accs, valid_accs_robust, valid_accs_adv, valid_accs_swa,
-                                           valid_accs_robust_swa, args.swa, args.validonc, args.validonadv, train_losses, valid_losses,
-                                           training_folder, filename_spec)
+                    Checkpointer.save_swa_checkpoint(swa_model, optimizer, swa_scheduler, epoch)
+                utils.TrainTracking.save_metrics(train_acc, valid_acc, valid_acc_robust, valid_acc_adv, valid_acc_swa,
+                                                 valid_acc_robust_swa, valid_acc_adv_swa, train_loss, valid_loss)
+                utils.TrainTracking.save_learning_curves()
                 if Checkpointer.early_stop:
                     end_epoch = epoch
                     break
@@ -318,13 +320,6 @@ if __name__ == '__main__':
         torch.optim.swa_utils.update_bn(trainloader, swa_model)
         model = swa_model
         valid_acc_swa, valid_loss_swa, acc_c_swa = valid_epoch(pbar, swa_model)
-        print(valid_acc_swa)
-    Checkpointer._save_final_model(model, optimizer, scheduler, end_epoch, path = f'./experiments/trained_models/{args.dataset}'
-                                                    f'/{args.modeltype}/config{args.experiment}_{args.lrschedule}_'
-                                                    f'{training_folder}{filename_spec}run_{args.run}.pth')
-    # print results
-    print("Maximum validation accuracy of", max(valid_accs), "achieved after", np.argmax(valid_accs) + 1, "epochs; "
-         "Minimum validation loss of", min(valid_losses), "achieved after", np.argmin(valid_losses) + 1, "epochs; ")
-    # save config file
-    shutil.copyfile(f'./experiments/configs/config{args.experiment}.py',
-                    f'./results/{args.dataset}/{args.modeltype}/config{args.experiment}_{args.lrschedule}_{training_folder}.py')
+    Checkpointer.save_final_model(model, optimizer, scheduler, end_epoch)
+    Traintracker.print_results()
+    Traintracker.save_config()

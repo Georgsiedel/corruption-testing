@@ -2,7 +2,7 @@ import numpy as np
 
 train_corruptions = np.array([
 #{'noise_type': 'standard', 'epsilon': 0.0, 'sphere': False, 'distribution': 'beta2-5'},
-{'noise_type': 'uniform-linf', 'epsilon': 0.15, 'sphere': False, 'distribution': 'uniform'},
+{'noise_type': 'uniform-linf', 'epsilon': 0.1, 'sphere': False, 'distribution': 'uniform'},
 {'noise_type': 'gaussian', 'epsilon': 0.15, 'sphere': False, 'distribution': 'uniform'},
 {'noise_type': 'uniform-l0.5', 'epsilon': 400000.0, 'sphere': False, 'distribution': 'uniform'},
 {'noise_type': 'uniform-l1', 'epsilon': 200.0, 'sphere': False, 'distribution': 'uniform'},
@@ -13,7 +13,7 @@ train_corruptions = np.array([
 {'noise_type': 'uniform-l0-impulse', 'epsilon': 0.15, 'sphere': True, 'distribution': 'uniform'}
 ])
 noise_sparsity = 0.5
-noise_patch_lower_scale = 0.5
+noise_patch_lower_scale = 0.3
 combine_train_corruptions = True #augment the train dataset with all corruptions
 concurrent_combinations = 1 #only has an effect if combine_train_corruption is True
 
@@ -39,14 +39,17 @@ modelparams = {'dropout_rate': 0.2, 'activation_function': 'silu'}
 resize = False
 aug_strat_check = True
 train_aug_strat = 'TrivialAugmentWide' #TrivialAugmentWide, RandAugment, AutoAugment, AugMix
-loss_function = 'ce' #'ce', 'jsd'
-lossparams = {'num_splits': 3, 'alpha': 12, 'smoothing': 0.1}
-mixup = {'alpha': 0.2, 'p': 1.0} #default alpha 0.2 #If both mixup and cutmix are >0, mixup or cutmix are selected by 0.5 chance
+loss = 'CrossEntropyLoss'
+lossparams = {'label_smoothing': 0.1}
+trades_loss = False
+trades_lossparams = {'step_size': 0.003, 'epsilon': 0.031, 'perturb_steps': 10, 'beta': 5.0, 'distance': 'l_inf'}
+robust_loss = False
+robust_lossparams = {'num_splits': 3, 'alpha': 12} #jsd if 3 splits, KL divergence if 2 splits
+mixup = {'alpha': 1.0, 'p': 1.0} #default alpha 0.2 #If both mixup and cutmix are >0, mixup or cutmix are selected by 0.5 chance
 cutmix = {'alpha': 1.0, 'p': 1.0} # default alpha 1.0 #If both mixup and cutmix are >0, mixup or cutmix are selected by 0.5 chance
-manifold = {'apply': True, 'noise_factor': 4}
-RandomEraseProbability = 0.0
+manifold = {'apply': False, 'noise_factor': 3}
+RandomEraseProbability = 0.1
 swa = False
-
 
 #define train and test corruptions:
 #define noise type (first column): 'gaussian', 'uniform-l0-impulse', 'uniform-l0-salt-pepper', 'uniform-linf'. also: all positive numbers p>0 for uniform Lp possible: 'uniform-l1', 'uniform-l2', ...
@@ -108,8 +111,8 @@ test_corruptions = np.array([
 test_on_c = True
 combine_test_corruptions = False #augment the test dataset with all corruptions
 calculate_adv_distance = False
-adv_distance_params = {'setsize': 1000, 'nb_iters': 100, 'eps_iter': 0.0005, 'norm': np.inf, "epsilon": 0.1,
-                       "clever": True, "clever_batches": 500, "clever_samples": 1024}
+adv_distance_params = {'setsize': 1000, 'nb_iters': 200, 'eps_iter': 0.0005, 'norm': np.inf, "epsilon": 0.1,
+                       "clever": True, "clever_batches": 500, "clever_samples": 50}
 calculate_autoattack_robustness = False
 autoattack_params = {'setsize': 1000, 'epsilon': 8/255, 'norm': 'Linf'}
 

@@ -17,7 +17,7 @@ noise_patch_lower_scale = 0.5
 combine_train_corruptions = True #augment the train dataset with all corruptions
 concurrent_combinations = 1 #only has an effect if combine_train_corruption is True
 
-batchsize = 128
+batchsize = 256
 minibatchsize = 8
 dataset = 'CIFAR100' #ImageNet #CIFAR100 #CIFAR10 #TinyImageNet
 normalize = True
@@ -39,10 +39,14 @@ modelparams = {'dropout_rate': 0.2, 'activation_function': 'relu'}
 resize = False
 aug_strat_check = True
 train_aug_strat = 'AugMix' #TrivialAugmentWide, RandAugment, AutoAugment, AugMix
-loss_function = 'trades' #'ce', 'jsd', 'trades'
-lossparams = {'num_splits': 3, 'alpha': 12, 'smoothing': 0.1}#{'step_size': 0.003, 'epsilon': 0.031, 'perturb_steps': 10, 'beta': 1.0, 'distance': 'l_inf'}
+loss = 'CrossEntropyLoss'
+lossparams = {'label_smoothing': 0.1}
+trades_loss = True
+trades_lossparams = {'step_size': 0.006, 'epsilon': 0.031, 'perturb_steps': 5, 'beta': 1.0, 'distance': 'l_inf'}
+robust_loss = False
+robust_lossparams = {'num_splits': 3, 'alpha': 12} #jsd if 3 splits, KL divergence if 2 splits
 mixup = {'alpha': 0.2, 'p': 1.0} #default alpha 0.2 #If both mixup and cutmix are >0, mixup or cutmix are selected by 0.5 chance
-cutmix = {'alpha': 0.2, 'p': 0.0} # default alpha 1.0 #If both mixup and cutmix are >0, mixup or cutmix are selected by 0.5 chance
+cutmix = {'alpha': 0.2, 'p': 1.0} # default alpha 1.0 #If both mixup and cutmix are >0, mixup or cutmix are selected by 0.5 chance
 manifold = {'apply': False, 'noise_factor': 2}
 RandomEraseProbability = 0.0
 swa = False
@@ -106,10 +110,10 @@ test_corruptions = np.array([
 
 test_on_c = True
 combine_test_corruptions = False #augment the test dataset with all corruptions
-calculate_adv_distance = False
-adv_distance_params = {'setsize': 1000, 'nb_iters': 100, 'eps_iter': 0.0005, 'norm': np.inf, "epsilon": 0.1,
-                       "clever": True, "clever_batches": 500, "clever_samples": 1024}
-calculate_autoattack_robustness = False
+calculate_adv_distance = True
+adv_distance_params = {'setsize': 1000, 'nb_iters': 200, 'eps_iter': 0.0005, 'norm': np.inf, "epsilon": 0.1,
+                       "clever": True, "clever_batches": 500, "clever_samples": 50}
+calculate_autoattack_robustness = True
 autoattack_params = {'setsize': 1000, 'epsilon': 8/255, 'norm': 'Linf'}
 
 

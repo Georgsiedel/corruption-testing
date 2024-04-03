@@ -87,9 +87,11 @@ def get_image_mask(batch, noise_patch_lower_scale=1.0, ratio=[0.3, 3.3]):
 def apply_noise(batch, minibatchsize, corruptions, concurrent_combinations, normalized, dataset,
                         manifold=False, manifold_factor=1, noise_sparsity=0.0, noise_patch_lower_scale=1.0):
 
+    if corruptions is None:
+        return batch
+
     #Calculate the mean values for each channel across all images
     mean, std = normalization_values(batch, dataset, normalized, manifold, manifold_factor)
-
 
     if manifold:
     # Throw out noise outside Gaussian, (L0) and Linf for manifold noise (since epsilon is dependent on dimensionality)
@@ -111,7 +113,7 @@ def apply_noise(batch, minibatchsize, corruptions, concurrent_combinations, norm
         else:
             corruptions_list = [corruptions]
 
-        noisy_minibatch = torch.clone(minibatch)
+        #noisy_minibatch = torch.clone(minibatch)
         for _, (corruption) in enumerate(corruptions_list):
             if corruption['distribution'] == 'uniform':
                 d = dist.Uniform(0, 1).sample()
@@ -126,7 +128,7 @@ def apply_noise(batch, minibatchsize, corruptions, concurrent_combinations, norm
                 d = 1
             epsilon = float(d) * float(corruption['epsilon'])
             sparsity = random.random() * noise_sparsity
-            noisy_minibatch = sample_lp_corr_batch(corruption['noise_type'], epsilon, noisy_minibatch, corruption['sphere'], mean, std, manifold, sparsity)
+            noisy_minibatch = sample_lp_corr_batch(corruption['noise_type'], epsilon, minibatch, corruption['sphere'], mean, std, manifold, sparsity)
 
         mask = get_image_mask(minibatch, noise_patch_lower_scale = noise_patch_lower_scale, ratio = [0.3, 3.3])
         final_minibatch = torch.where(mask, noisy_minibatch, minibatch)
@@ -195,12 +197,13 @@ def sample_lp_corr_batch(noise_type, epsilon, batch, density_distribution_max, m
         else:
             print('Unknown type of noise')
 
-        corruption = corruption.to(device).clone()
+        corruption = corruption.to(device)#.clone()
         #sparsity is applied
         sparse_matrix = torch.cuda.FloatTensor(batch.shape).uniform_()
-        corruption[sparse_matrix < sparsity] = 0
+        #corruption[sparse_matrix < sparsity] = 0
+        sparse_corruption = torch.where(sparse_matrix < sparsity, 0, corruption)
 
-        corrupted_batch = batch + (corruption / std)
+        corrupted_batch = batch + (sparse_corruption / std)
         if not manifold:
             corrupted_batch = torch.clamp(corrupted_batch, (0-mean)/std, (1-mean)/std)  #clip below lower and above upper bound
         return corrupted_batch

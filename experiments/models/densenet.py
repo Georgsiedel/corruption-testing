@@ -95,7 +95,10 @@ class DenseNet(ct_model.CtModel):
         out = F.avg_pool2d(self.activation_function(self.bn(out)), 4)
         out = out.view(out.size(0), -1)
         out = self.linear(out)
-        return out
+        if self.training == True:
+            return out, mixed_targets
+        else:
+            return out
 
 def DenseNet121_32(dataset, normalized, num_classes, factor, activation_function='relu'):
     return DenseNet(Bottleneck, [6,12,24,16], growth_rate=32, dataset=dataset, normalized=normalized,
