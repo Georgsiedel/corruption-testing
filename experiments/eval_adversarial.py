@@ -171,7 +171,10 @@ def compute_adv_distance(testset, workers, model, adv_distance_params):
     epsilon = adv_distance_params["epsilon"]
     eps_iter = adv_distance_params["eps_iter"]
     nb_iters = adv_distance_params["nb_iters"]
-    norm = adv_distance_params["norm"]
+    if adv_distance_params["norm"] == 'inf':
+        norm = np.inf
+    else:
+        norm = adv_distance_params["norm"]
     clever_batches = adv_distance_params["clever_batches"]
     clever_samples = adv_distance_params["clever_samples"]
 
@@ -195,23 +198,15 @@ def compute_adv_distance(testset, workers, model, adv_distance_params):
         print(f"{norm}-Adversarial Distance (statistical) lower bound calculation using Clever Score with "
               f"{clever_batches} batches with {clever_samples} samples each.")
         clever_scores, clever_id = clever_score(testloader=truncated_testloader, model=model, clever_batches=clever_batches,
-                             clever_samples=clever_samples, epsilon=epsilon, norm=norm, num_classes=num_classes)
-        clever_scores_sorted = np.asarray(clever_scores)[sorted_indices1] if adv_distance_params['clever'] == True else [0.0]
-        mean_clever_score = np.asarray(torch.tensor(clever_scores).cpu()).mean() if adv_distance_params['clever'] == True else 0.0
+                             clever_samples=clever_samples, epsilon=np.max(adv_dist_list1), norm=norm, num_classes=num_classes)
+        clever_scores_sorted = np.asarray(clever_scores)[sorted_indices1]
+        mean_clever_score = np.asarray(torch.tensor(clever_scores).cpu()).mean()
         print(f'Mean CLEVER score: {mean_clever_score}')
     else:
         mean_clever_score = 0.0
-    fig = plt.figure(figsize=(15, 5))
-    plt.scatter(range(len(adv_distance_sorted1)), adv_distance_sorted1, s=3, label="PGD Adversarial Distance")
-    if adv_distance_params['clever'] == True:
-        plt.scatter(range(len(clever_scores_sorted)), clever_scores_sorted, s=3, label="Clever Score")
-    plt.xlabel("Sorted Image ID")
-    plt.ylabel("Distance")
-    plt.legend()
-    plt.show()
-    #plt.close()
+        clever_scores_sorted = [0.0]
 
-    return adv_acc*100, mean_dist1, mean_dist2, mean_clever_score, fig, clever_scores_sorted, adv_distance_sorted1
+    return adv_acc*100, mean_dist1, mean_dist2, mean_clever_score, clever_scores_sorted, adv_distance_sorted1
 
 def compute_adv_acc(autoattack_params, testset, model, workers, batchsize=10):
     print(f"{autoattack_params['norm']} Adversarial Accuracy calculation using AutoAttack attack "

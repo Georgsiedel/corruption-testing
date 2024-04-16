@@ -1,11 +1,9 @@
 from experiments.utils import plot_images
-import torch
 import torch.nn as nn
 import numpy as np
 from experiments.mixup import mixup_process
-from experiments.noise import apply_noise
+from experiments.noise import apply_noise, noise_up, apply_noise_add_and_mult
 from experiments.data import normalization_values
-from experiments.noisy_mixup import do_noisy_mixup
 
 class CtModel(nn.Module):
 
@@ -36,43 +34,30 @@ class CtModel(nn.Module):
         original_batchsize = (out.size(0) // (robust_samples + 1))
 
         if k == 0:  # Do input mixup if k is 0
-            #out, targets = do_noisy_mixup(out, targets, num_classes=self.num_classes, jsd=robust_samples,
-            #                              alpha=mixup_alpha, add_noise_level=0.5, mult_noise_level=0.5,
-            #                              sparse_level=0.65)
             mixed_out, targets = mixup_process(out, targets, robust_samples, self.num_classes, mixup_alpha, mixup_p,
-                                         cutmix_alpha, cutmix_p, manifold=False)
-            noisy_out = apply_noise(mixed_out, noise_minibatchsize, corruptions, concurrent_combinations,
-                                      self.normalized, self.dataset, manifold=False, manifold_factor=1,
-                                      noise_sparsity=noise_sparsity, noise_patch_lower_scale=noise_patch_lower_scale)
-            noisy_out = torch.cat((noisy_out[:original_batchsize, :, :, :],
-                                   apply_noise(noisy_out[original_batchsize:, :, :, :], noise_minibatchsize,
-                                               corruptions, concurrent_combinations, self.normalized, self.dataset,
-                                               manifold=False, manifold_factor=1, noise_sparsity=noise_sparsity,
-                                               noise_patch_lower_scale=noise_patch_lower_scale)),
-                                   dim=0)
+                                         cutmix_alpha, cutmix_p, manifold=False, inplace=True)
+            #mixed = mixed_out.clone()
+            #noisy_out = apply_noise_add_and_mult(mixed_out, noise_minibatchsize,
+            #                                        corruptions, self.normalized, self.dataset, noise_patch_lower_scale=
+            #                                                noise_patch_lower_scale, noise_sparsity=noise_sparsity)
+            noisy_out = noise_up(mixed_out, robust_samples=robust_samples, add_noise_level=0.4, mult_noise_level=0.2,
+                                        sparse_level=noise_sparsity, l0_level=0.2)
+            #noisy_out = torch.cat((noisy_out[:original_batchsize, :, :, :],
+            #                       apply_noise_add_and_mult(noisy_out[original_batchsize:, :, :, :], noise_minibatchsize,
+            #                                        corruptions, self.normalized, self.dataset, noise_patch_lower_scale=
+            #                                                noise_patch_lower_scale, noise_sparsity=noise_sparsity)),
+            #                       dim=0)
             out = noisy_out
-            #plot_images(out[0:3], out[256:259], 3)
+            #plot_images(noisy_out, mixed, 3)
+
         out = self.blocks[0](out)
 
         for i, ResidualBlock in enumerate(self.blocks[1:]):
             out = ResidualBlock(out)
-            #print(out.std())
             if k == (i + 1):  # Do manifold mixup if k is greater 0
-                out, targets = do_noisy_mixup(out, targets, num_classes=self.num_classes, jsd=robust_samples,
-                                              alpha=mixup_alpha, add_noise_level=0.5, mult_noise_level=0.5, sparse_level=0.65)
-                #with torch.no_grad():
-                #    mixed_out, targets = mixup_process(out, targets, robust_samples, self.num_classes, mixup_alpha, mixup_p,
-                #                         cutmix_alpha, cutmix_p, manifold=True)
-
-                    #noisy_out = apply_noise(mixed_out, noise_minibatchsize, corruptions, concurrent_combinations,
-                    #                self.normalized, self.dataset, manifold=True, manifold_factor=manifold_noise_factor,
-                    #                noise_sparsity=noise_sparsity, noise_patch_lower_scale=noise_patch_lower_scale)
-                    #noisy_out = torch.cat((noisy_out[:original_batchsize, :, :, :],
-                    #                       apply_noise(noisy_out[original_batchsize:, :, :, :], noise_minibatchsize,
-                    #                                   corruptions, concurrent_combinations, self.normalized, self.dataset,
-                    #                                   manifold=True, manifold_factor=manifold_noise_factor,
-                    #                                   noise_sparsity=noise_sparsity, noise_patch_lower_scale=noise_patch_lower_scale)),
-                    #                       dim=0)
-                #out = noisy_out
+                mixed_out, targets = mixup_process(out, targets, robust_samples, self.num_classes, mixup_alpha, mixup_p,
+                                         cutmix_alpha, cutmix_p, manifold=True, inplace=True)
+                out = noise_up(out, robust_samples=robust_samples, add_noise_level=1.0, mult_noise_level=0.5,
+                                        sparse_level=noise_sparsity, l0_level=0.2)
         return out, targets
 

@@ -3,8 +3,21 @@ import numpy as np
 from torch.utils.data import DataLoader
 from torchmetrics.classification import MulticlassCalibrationError
 device = "cuda" if torch.cuda.is_available() else "cpu"
-
 from experiments.noise import apply_noise
+
+def select_p_corruptions(testloader, model, test_corruptions, dataset, combine_test_corruptions):
+    if combine_test_corruptions:  # combined p-norm corruption robust accuracy
+        accs = compute_p_corruptions(testloader, model, test_corruptions, dataset)
+        print(accs, "% Accuracy on combined Lp-norm Test Noise")
+
+    else:  # separate p-norm corruption robust accuracy
+        accs = []
+        for _, (test_corruption) in enumerate(test_corruptions):
+            acc = compute_p_corruptions(testloader, model, test_corruptions, dataset)
+            print(acc, "% Accuracy on random test corruptions of type:", test_corruption['noise_type'],
+                  test_corruption['epsilon'])
+            accs = accs + acc
+    return accs
 
 def compute_p_corruptions(testloader, model, test_corruptions, dataset):
     with torch.no_grad():

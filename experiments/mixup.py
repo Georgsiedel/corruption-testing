@@ -1,6 +1,6 @@
 import torch
 from torchvision.transforms import functional as F
-import torchvision
+import numpy as np
 import math
 from torch import Tensor
 from typing import List, Optional, Tuple
@@ -40,7 +40,6 @@ class RandomMixup(torch.nn.Module):
         Args:
             batch (Tensor): Float tensor of size (B, C, H, W)
             target (Tensor): Integer tensor of size (B, )
-
         Returns:
             Tensor: Randomly transformed batch.
         """
@@ -62,25 +61,14 @@ class RandomMixup(torch.nn.Module):
         if torch.rand(1).item() >= self.p:
             return batch, target
 
-        lambda_param = float(torch._sample_dirichlet(torch.tensor([self.alpha, self.alpha]))[0])
+        lambda_param = np.random.beta(self.alpha, self.alpha) if self.alpha > 0.0 else 1.0
 
-        batches = batch.view(robust_samples + 1, -1, batch.size()[1], batch.size()[2], batch.size()[3])
-        for id, b in enumerate(batches):
+        q = np.int(batch.shape[0] / (robust_samples+1))
+        index = torch.randperm(q).cuda()
+        for i in range(robust_samples+1):
+            batch[q*i:q*(i+1)] = lambda_param * batch[q*i:q*(i+1)] + (1 - lambda_param) * batch[q*i:q*(i+1)][index]
+        target = lambda_param * target + (1 - lambda_param) * target[index]
 
-            # It's faster to roll the batch by one instead of shuffling it to create image pairs
-            b_rolled = b.roll(1, 0)
-
-            # Implemented as on mixup paper, page 3.
-            b_rolled.mul_(1.0 - lambda_param)
-            b = b*lambda_param + b_rolled
-
-            batches[id] = b
-
-        batch = batches.view(-1, batch.size()[1], batch.size()[2], batch.size()[3])
-
-        target_rolled = target.roll(1, 0)
-        target_rolled.mul_(1.0 - lambda_param)
-        target.mul_(lambda_param).add_(target_rolled)
         return batch, target
 
     def __repr__(self) -> str:
@@ -150,7 +138,7 @@ class RandomCutmix(torch.nn.Module):
             return batch, target
 
         # Implemented as on cutmix paper, page 12 (with minor corrections on typos).
-        lambda_param = float(torch._sample_dirichlet(torch.tensor([self.alpha, self.alpha]))[0])
+        lambda_param = np.random.beta(self.alpha, self.alpha) if self.alpha > 0.0 else 1.0
         W, H = F.get_image_size(batch)
 
         r_x = torch.randint(W, (1,))
@@ -167,21 +155,27 @@ class RandomCutmix(torch.nn.Module):
 
         lambda_param = float(1.0 - (x2 - x1) * (y2 - y1) / (W * H))
 
-        batches = batch.view(robust_samples + 1, -1, batch.size()[1], batch.size()[2], batch.size()[3])
-        for id, b in enumerate(batches):
+        #batches = batch.view(robust_samples + 1, -1, batch.size()[1], batch.size()[2], batch.size()[3])
+        #for id, b in enumerate(batches):
 
             #It's faster to roll the batch by one instead of shuffling it to create image pairs
-            batch_rolled = b.roll(1, 0)
-            b_clone = b.clone()
-            b_clone[:, :, y1:y2, x1:x2] = batch_rolled[:, :, y1:y2, x1:x2]
-            batches[id] = b
+        #    batch_rolled = b.roll(1, 0)
+        #    b_clone = b.clone()
+        #    b_clone[:, :, y1:y2, x1:x2] = batch_rolled[:, :, y1:y2, x1:x2]
+        #    batches[id] = b
 
-        batch = batches.view(-1, batch.size()[1], batch.size()[2], batch.size()[3])
+        #batch = batches.view(-1, batch.size()[1], batch.size()[2], batch.size()[3])
 
-        target_rolled = target.roll(1, 0)
-        target_weighted = target*lambda_param + target_rolled * (1.0 - lambda_param)
+        #target_rolled = target.roll(1, 0)
+        #target_weighted = target*lambda_param + target_rolled * (1.0 - lambda_param)
 
-        return batch, target_weighted
+        q = np.int(batch.shape[0] / (robust_samples+1))
+        index = torch.randperm(q).cuda()
+        for i in range(robust_samples+1):
+            batch[q*i:q*(i+1), :, y1:y2, x1:x2] = batch[q*i:q*(i+1), :, y1:y2, x1:x2][index]
+        target = lambda_param * target + (1 - lambda_param) * target[index]
+
+        return batch, target
 
     def __repr__(self) -> str:
         s = (
@@ -194,10 +188,10 @@ class RandomCutmix(torch.nn.Module):
         )
         return s
 
-def mixup_process(inputs, targets, robust_samples, num_classes, mixup_alpha, mixup_p, cutmix_alpha, cutmix_p, manifold):
+def mixup_process(inputs, targets, robust_samples, num_classes, mixup_alpha, mixup_p, cutmix_alpha, cutmix_p, manifold, inplace):
 
     #if manifold==True and (mixup_p > 0.0 or cutmix_p > 0.0):
-    #    mixupcutmix = RandomMixup(num_classes, p=mixup_p, alpha=mixup_alpha)
+    #    mixupcutmix = RandomMixup(num_classes, p=mixup_p, alpha=mixup_alpha, inplace=inplace)
     #    inputs, targets = mixupcutmix(inputs, targets, robust_samples)
     if (cutmix_alpha or cutmix_p) == 0 and (mixup_alpha or mixup_p) == 0:
         return inputs, targets
@@ -210,10 +204,10 @@ def mixup_process(inputs, targets, robust_samples, num_classes, mixup_alpha, mix
         random_number = random.uniform(0, 1)
 
         if random_number < cutmix_p:
-            mixupcutmix = RandomCutmix(num_classes, p=1.0, alpha=cutmix_alpha)
+            mixupcutmix = RandomCutmix(num_classes, p=1.0, alpha=cutmix_alpha, inplace=inplace)
             inputs, targets = mixupcutmix(inputs, targets, robust_samples)
         elif random_number < cutmix_p + mixup_p:
-            mixupcutmix = RandomMixup(num_classes, p=1.0, alpha=mixup_alpha)
+            mixupcutmix = RandomMixup(num_classes, p=1.0, alpha=mixup_alpha, inplace=inplace)
             inputs, targets = mixupcutmix(inputs, targets, robust_samples)
         else:
             return inputs, targets

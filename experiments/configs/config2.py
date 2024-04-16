@@ -108,10 +108,10 @@ test_corruptions = np.array([
 {'noise_type': 'gaussian', 'epsilon': 0.2, 'sphere': False, 'distribution': 'max'}
 ])
 
-test_on_c = True
-combine_test_corruptions = False #augment the test dataset with all corruptions
+test_on_c = False
+combine_test_corruptions = True #augment the test dataset with all corruptions
 calculate_adv_distance = True
-adv_distance_params = {'setsize': 500, 'nb_iters': 200, 'eps_iter': 0.0003, 'norm': np.inf, "epsilon": 0.1,
+adv_distance_params = {'setsize': 500, 'nb_iters': 200, 'eps_iter': 0.0003, 'norm': 'inf', "epsilon": 0.1,
                        "clever": True, "clever_batches": 500, "clever_samples": 1024}
 calculate_autoattack_robustness = False
 autoattack_params = {'setsize': 1000, 'epsilon': 8/255, 'norm': 'Linf'}
@@ -121,6 +121,7 @@ if combine_train_corruptions:
     model_count = 1
 else:
     model_count = train_corruptions.shape[0]
+
 if dataset == 'CIFAR10':
     num_classes = 10
     pixel_factor = 1

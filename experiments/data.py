@@ -190,7 +190,7 @@ def create_transforms(dataset, aug_strat_check, train_aug_strat, resize = False,
 
     return transforms_preprocess, transforms_augmentation
 
-def normalization_values(batch, dataset, normalized, manifold, manifold_factor=1):
+def normalization_values(batch, dataset, normalized, manifold=False, manifold_factor=1):
 
     if manifold:
         mean = torch.mean(batch, dim=(0, 2, 3), keepdim=True).to(device)

@@ -1,33 +1,33 @@
 import numpy as np
 
 train_corruptions = np.array([
-{'noise_type': 'standard', 'epsilon': 0.0, 'sphere': False, 'distribution': 'beta2-5'},
-#{'noise_type': 'uniform-linf', 'epsilon': 0.15, 'sphere': False, 'distribution': 'uniform'},
-#{'noise_type': 'gaussian', 'epsilon': 0.15, 'sphere': False, 'distribution': 'uniform'},
-#{'noise_type': 'uniform-l0.5', 'epsilon': 400000.0, 'sphere': False, 'distribution': 'uniform'},
-#{'noise_type': 'uniform-l1', 'epsilon': 200.0, 'sphere': False, 'distribution': 'uniform'},
-#{'noise_type': 'uniform-l2', 'epsilon': 5.0, 'sphere': False, 'distribution': 'uniform'},
-#{'noise_type': 'uniform-l5', 'epsilon': 0.6, 'sphere': False, 'distribution': 'uniform'},
-#{'noise_type': 'uniform-l50', 'epsilon': 0.18, 'sphere': False, 'distribution': 'uniform'},
-#{'noise_type': 'uniform-l0-impulse', 'epsilon': 0.2, 'sphere': False, 'distribution': 'uniform'},
-#{'noise_type': 'uniform-l0-impulse', 'epsilon': 0.15, 'sphere': True, 'distribution': 'uniform'}
+#{'noise_type': 'standard', 'epsilon': 0.0, 'sphere': False, 'distribution': 'beta2-5'},
+{'noise_type': 'uniform-linf', 'epsilon': 0.1, 'sphere': False, 'distribution': 'uniform'},
+{'noise_type': 'gaussian', 'epsilon': 0.15, 'sphere': False, 'distribution': 'uniform'},
+{'noise_type': 'uniform-l0.5', 'epsilon': 400000.0, 'sphere': False, 'distribution': 'uniform'},
+{'noise_type': 'uniform-l1', 'epsilon': 200.0, 'sphere': False, 'distribution': 'uniform'},
+{'noise_type': 'uniform-l2', 'epsilon': 5.0, 'sphere': False, 'distribution': 'uniform'},
+{'noise_type': 'uniform-l5', 'epsilon': 0.6, 'sphere': False, 'distribution': 'uniform'},
+{'noise_type': 'uniform-l50', 'epsilon': 0.18, 'sphere': False, 'distribution': 'uniform'},
+{'noise_type': 'uniform-l0-impulse', 'epsilon': 0.2, 'sphere': False, 'distribution': 'uniform'},
+{'noise_type': 'uniform-l0-impulse', 'epsilon': 0.15, 'sphere': True, 'distribution': 'uniform'}
 ])
-noise_sparsity = 0.5
+noise_sparsity = 0.65
 noise_patch_lower_scale = 0.5
-combine_train_corruptions = False #augment the train dataset with all corruptions
+combine_train_corruptions = True #augment the train dataset with all corruptions
 concurrent_combinations = 1 #only has an effect if combine_train_corruption is True
 
-batchsize = 512
+batchsize = 256
 minibatchsize = 8
-dataset = 'CIFAR10' #ImageNet #CIFAR100 #CIFAR10 #TinyImageNet
+dataset = 'CIFAR100' #ImageNet #CIFAR100 #CIFAR10 #TinyImageNet
 normalize = True
 validontest = True
 validonc = True
 validonadv = True
 lrschedule = 'CosineAnnealingWarmRestarts'
 learningrate = 0.15
-epochs = 105
-lrparams = {'T_0': 15, 'T_mult': 2}
+epochs = 375
+lrparams = {'T_0': 25, 'T_mult': 2}
 warmupepochs = 0
 earlystop = False
 earlystopPatience = 15
@@ -35,22 +35,21 @@ optimizer = 'SGD'
 optimizerparams = {'momentum': 0.9, 'weight_decay': 1e-4}
 number_workers = 1
 modeltype = 'WideResNet_28_4'
-modelparams = {'dropout_rate': 0.3, 'activation_function': 'relu'}
+modelparams = {'dropout_rate': 0.2, 'activation_function': 'silu'}
 resize = False
-aug_strat_check = False
+aug_strat_check = True
 train_aug_strat = 'TrivialAugmentWide' #TrivialAugmentWide, RandAugment, AutoAugment, AugMix
 loss = 'CrossEntropyLoss'
-lossparams = {'label_smoothing': 0.0}
+lossparams = {'label_smoothing': 0.1}
 trades_loss = False
 trades_lossparams = {'step_size': 0.003, 'epsilon': 0.031, 'perturb_steps': 10, 'beta': 5.0, 'distance': 'l_inf'}
-robust_loss = False
+robust_loss = True
 robust_lossparams = {'num_splits': 3, 'alpha': 12} #jsd if 3 splits, KL divergence if 2 splits
-mixup = {'alpha': 0.2, 'p': 0.0} #default alpha 0.2 #If both mixup and cutmix are >0, mixup or cutmix are selected by 0.5 chance
-cutmix = {'alpha': 1.0, 'p': 0.0} # default alpha 1.0 #If both mixup and cutmix are >0, mixup or cutmix are selected by 0.5 chance
-manifold = {'apply': False, 'noise_factor': 1}
+mixup = {'alpha': 1.0, 'p': 1.0} #default alpha 0.2 #If both mixup and cutmix are >0, mixup or cutmix are selected by 0.5 chance
+cutmix = {'alpha': 1.0, 'p': 1.0} # default alpha 1.0 #If both mixup and cutmix are >0, mixup or cutmix are selected by 0.5 chance
+manifold = {'apply': True, 'noise_factor': 3}
 RandomEraseProbability = 0.1
 swa = False
-
 
 #define train and test corruptions:
 #define noise type (first column): 'gaussian', 'uniform-l0-impulse', 'uniform-l0-salt-pepper', 'uniform-linf'. also: all positive numbers p>0 for uniform Lp possible: 'uniform-l1', 'uniform-l2', ...
@@ -111,7 +110,7 @@ test_corruptions = np.array([
 
 test_on_c = True
 combine_test_corruptions = False #augment the test dataset with all corruptions
-calculate_adv_distance = True
+calculate_adv_distance = False
 adv_distance_params = {'setsize': 500, 'nb_iters': 200, 'eps_iter': 0.0003, 'norm': np.inf, "epsilon": 0.1,
                        "clever": True, "clever_batches": 500, "clever_samples": 1024}
 calculate_autoattack_robustness = False

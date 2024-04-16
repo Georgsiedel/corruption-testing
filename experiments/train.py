@@ -1,5 +1,4 @@
 import argparse
-import ast
 import importlib
 import numpy as np
 from tqdm import tqdm
@@ -23,107 +22,83 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 torch.cuda.set_device(0)
 cudnn.benchmark = False #this slightly speeds up 32bit precision training (5%)
 
-def str2bool(v):
-    if isinstance(v, bool):
-        return v
-    if v.lower() in ('yes', 'true', 't', 'y', '1'):
-        return True
-    elif v.lower() in ('no', 'false', 'f', 'n', '0'):
-        return False
-    else:
-        raise argparse.ArgumentTypeError(f'Error: Boolean value expected for argument {v}.')
-
-class str2dictAction(argparse.Action):
-    def __call__(self, parser, namespace, values, option_string=None):
-        # Parse the dictionary string into a dictionary object
-        # if values == '':
-
-        try:
-            dictionary = ast.literal_eval(values)
-            if not isinstance(dictionary, dict):
-                raise ValueError("Invalid dictionary format")
-        except (ValueError, SyntaxError) as e:
-            raise argparse.ArgumentTypeError(f"Invalid dictionary format: {values}") from e
-
-        setattr(namespace, self.dest, dictionary)
-
 parser = argparse.ArgumentParser(description='PyTorch Training with perturbations')
-parser.add_argument('--resume', type=str2bool, nargs='?', const=False, default=False,
+parser.add_argument('--resume', type=utils.str2bool, nargs='?', const=False, default=False,
                     help='resuming from saved checkpoint in fixed-path repo defined below')
 parser.add_argument('--train_corruptions', default={'noise_type': 'standard', 'epsilon': 0.0, 'sphere': False, 'distribution': 'max'},
-                    type=str, action=str2dictAction, metavar='KEY=VALUE', help='dictionary for type of noise, epsilon value, '
+                    type=str, action=utils.str2dictAction, metavar='KEY=VALUE', help='dictionary for type of noise, epsilon value, '
                     'whether it is always the maximum noise value and a distribution from which various epsilon are sampled')
-parser.add_argument('--run', default=0, type=int, help='run number')
+parser.add_argument('--run', default=1, type=int, help='run number')
 parser.add_argument('--experiment', default=0, type=int,
                     help='experiment number - each experiment is defined in module config{experiment}')
 parser.add_argument('--batchsize', default=128, type=int,
                     help='Images per batch - more means quicker training, but higher memory demand')
 parser.add_argument('--dataset', default='CIFAR10', type=str, help='Dataset to choose')
-parser.add_argument('--validontest', type=str2bool, nargs='?', const=True, default=True, help='For datasets wihtout '
+parser.add_argument('--validontest', type=utils.str2bool, nargs='?', const=True, default=True, help='For datasets wihtout '
                     'standout validation (e.g. CIFAR). True: Use full training data, False: Split 20% for valiationd')
 parser.add_argument('--epochs', default=100, type=int, help="number of epochs")
 parser.add_argument('--learningrate', default=0.1, type=float, help='learning rate')
 parser.add_argument('--lrschedule', default='MultiStepLR', type=str, help='Learning rate scheduler from pytorch.')
-parser.add_argument('--lrparams', default={'milestones': [85, 95], 'gamma': 0.2}, type=str, action=str2dictAction,
+parser.add_argument('--lrparams', default={'milestones': [85, 95], 'gamma': 0.2}, type=str, action=utils.str2dictAction,
                     metavar='KEY=VALUE', help='parameters for the learning rate scheduler')
-parser.add_argument('--earlystop', type=str2bool, nargs='?', const=False, default=False, help='Use earlystopping after '
+parser.add_argument('--earlystop', type=utils.str2bool, nargs='?', const=False, default=False, help='Use earlystopping after '
                     'some epochs (patience) of no increase in performance')
 parser.add_argument('--earlystopPatience', default=15, type=int,
                     help='Number of epochs to wait for a better performance if earlystop is True')
 parser.add_argument('--optimizer', default='SGD', type=str, help='Optimizer from torch.optim')
 parser.add_argument('--optimizerparams', default={'momentum': 0.9, 'weight_decay': 5e-4}, type=str,
-                    action=str2dictAction, metavar='KEY=VALUE', help='parameters for the optimizer')
+                    action=utils.str2dictAction, metavar='KEY=VALUE', help='parameters for the optimizer')
 parser.add_argument('--modeltype', default='wideresnet', type=str,
                     help='Modeltype to train, use either default WRN28 or model from pytorch models')
-parser.add_argument('--modelparams', default={}, type=str, action=str2dictAction, metavar='KEY=VALUE',
+parser.add_argument('--modelparams', default={}, type=str, action=utils.str2dictAction, metavar='KEY=VALUE',
                     help='parameters for the chosen model')
-parser.add_argument('--resize', type=str2bool, nargs='?', const=False, default=False,
+parser.add_argument('--resize', type=utils.str2bool, nargs='?', const=False, default=False,
                     help='Resize a model to 224x224 pixels, standard for models like transformers.')
-parser.add_argument('--aug_strat_check', type=str2bool, nargs='?', const=True, default=False,
+parser.add_argument('--aug_strat_check', type=utils.str2bool, nargs='?', const=True, default=False,
                     help='Whether to use an auto-augmentation scheme')
 parser.add_argument('--train_aug_strat', default='TrivialAugmentWide', type=str, help='auto-augmentation scheme')
 parser.add_argument('--loss', default='CrossEntropyLoss', type=str, help='loss function to use, chosen from torch.nn loss functions')
-parser.add_argument('--lossparams', default={}, type=str, action=str2dictAction, metavar='KEY=VALUE',
+parser.add_argument('--lossparams', default={}, type=str, action=utils.str2dictAction, metavar='KEY=VALUE',
                     help='parameters for the standard loss function')
-parser.add_argument('--trades_loss', type=str2bool, nargs='?', const=False, default=False,
+parser.add_argument('--trades_loss', type=utils.str2bool, nargs='?', const=False, default=False,
                     help='whether or not to use trades loss for training')
 parser.add_argument('--trades_lossparams',
                     default={'step_size': 0.003, 'epsilon': 0.031, 'perturb_steps': 10, 'beta': 1.0, 'distance': 'l_inf'},
-                    type=str, action=str2dictAction, metavar='KEY=VALUE', help='parameters for the trades loss function')
-parser.add_argument('--robust_loss', type=str2bool, nargs='?', const=False, default=False,
+                    type=str, action=utils.str2dictAction, metavar='KEY=VALUE', help='parameters for the trades loss function')
+parser.add_argument('--robust_loss', type=utils.str2bool, nargs='?', const=False, default=False,
                     help='whether or not to use robust (JSD/stability) loss for training')
-parser.add_argument('--robust_lossparams', default={'num_splits': 3, 'alpha': 12}, type=str, action=str2dictAction,
+parser.add_argument('--robust_lossparams', default={'num_splits': 3, 'alpha': 12}, type=str, action=utils.str2dictAction,
                     metavar='KEY=VALUE', help='parameters for the robust loss function. If 3, JSD will be used.')
-parser.add_argument('--mixup', default={'alpha': 0.2, 'p': 0.0}, type=str, action=str2dictAction, metavar='KEY=VALUE',
+parser.add_argument('--mixup', default={'alpha': 0.2, 'p': 0.0}, type=str, action=utils.str2dictAction, metavar='KEY=VALUE',
                     help='Mixup parameters, Pytorch suggests 0.2 for alpha. Mixup, Cutmix and RandomErasing are randomly '
                     'chosen without overlapping based on their probability, even if the sum of the probabilities is >1')
-parser.add_argument('--cutmix', default={'alpha': 1.0, 'p': 0.0}, type=str, action=str2dictAction, metavar='KEY=VALUE',
+parser.add_argument('--cutmix', default={'alpha': 1.0, 'p': 0.0}, type=str, action=utils.str2dictAction, metavar='KEY=VALUE',
                     help='Cutmix parameters, Pytorch suggests 1.0 for alpha. Mixup, Cutmix and RandomErasing are randomly '
                     'chosen without overlapping based on their probability, even if the sum of the probabilities is >1')
-parser.add_argument('--manifold', default={'apply': False, 'noise_factor': 4}, type=str, action=str2dictAction, metavar='KEY=VALUE',
+parser.add_argument('--manifold', default={'apply': False, 'noise_factor': 4}, type=str, action=utils.str2dictAction, metavar='KEY=VALUE',
                     help='Choose whether to apply noisy mixup in manifold layers')
-parser.add_argument('--combine_train_corruptions', type=str2bool, nargs='?', const=True, default=True,
+parser.add_argument('--combine_train_corruptions', type=utils.str2bool, nargs='?', const=True, default=True,
                     help='Whether to combine all training noise values by drawing from the randomly')
 parser.add_argument('--concurrent_combinations', default=1, type=int, help='How many of the training noise values should '
                     'be applied at once on one image. USe only if you defined multiple training noise values.')
-parser.add_argument('--number_workers', default=4, type=int, help='How many workers are launched to parallelize data '
+parser.add_argument('--number_workers', default=2, type=int, help='How many workers are launched to parallelize data '
                     'loading. Experimental. 4 for ImageNet, 1 for Cifar. More demand GPU memory, but maximize GPU usage.')
 parser.add_argument('--RandomEraseProbability', default=0.0, type=float,
                     help='probability of applying random erasing to an image')
 parser.add_argument('--warmupepochs', default=5, type=int,
                     help='Number of Warmupepochs for stable training early on. Start with factor 10 lower learning rate')
-parser.add_argument('--normalize', type=str2bool, nargs='?', const=False, default=False,
+parser.add_argument('--normalize', type=utils.str2bool, nargs='?', const=False, default=False,
                     help='Whether to normalize input data to mean=0 and std=1')
 parser.add_argument('--pixel_factor', default=1, type=int, help='default is 1 for 32px (CIFAR10), '
                     'e.g. 2 for 64px images. Scales convolutions automatically in the same model architecture')
 parser.add_argument('--minibatchsize', default=8, type=int, help='batchsize, for which a new corruption type is sampled. '
                     'batchsize must be a multiple of minibatchsize. in case of p-norm corruptions with 0<p<inf, the same '
                     'corruption is applied for all images in the minibatch')
-parser.add_argument('--validonc', type=str2bool, nargs='?', const=False, default=False,
+parser.add_argument('--validonc', type=utils.str2bool, nargs='?', const=False, default=False,
                     help='Whether to do a validation on a subset of c-data every epoch')
-parser.add_argument('--validonadv', type=str2bool, nargs='?', const=False, default=False,
+parser.add_argument('--validonadv', type=utils.str2bool, nargs='?', const=False, default=False,
                     help='Whether to do a validation with an FGSM adversarial attack every epoch')
-parser.add_argument('--swa', type=str2bool, nargs='?', const=False, default=False,
+parser.add_argument('--swa', type=utils.str2bool, nargs='?', const=False, default=False,
                     help='Whether to use stochastic weight averaging over the last epochs')
 parser.add_argument('--noise_sparsity', default=0.0, type=float,
                     help='probability of not applying a calculated noise value to a dimension of an image')
@@ -157,14 +132,14 @@ def train_epoch(pbar):
             loss = criterion(outputs, mixed_targets, inputs, targets)
         loss.retain_grad()
 
-        scaler.scale(loss).backward()
+        Scaler.scale(loss).backward()
 
-        scaler.unscale_(optimizer)
+        Scaler.unscale_(optimizer)
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0, norm_type=2.0)
         #for name, param in model.named_parameters():
         #        print(name, param.grad)
-        scaler.step(optimizer)
-        scaler.update()
+        Scaler.step(optimizer)
+        Scaler.update()
         torch.cuda.synchronize()
         train_loss += loss.item()
 
@@ -216,7 +191,7 @@ def valid_epoch(pbar, net):
 
         if args.validonc == True:
             pbar.set_description(
-                '[Valid] Robust Accuracy Calculation. Last Robust Accuracy: {:.3f}'.format(valid_accs_robust[-1] if valid_accs_robust else 0))
+                '[Valid] Robust Accuracy Calculation. Last Robust Accuracy: {:.3f}'.format(Traintracker.valid_accs_robust[-1] if Traintracker.valid_accs_robust else 0))
             acc_c = compute_c_corruptions(args.dataset, testsets_c, net, batchsize=200,
                                           num_classes=num_classes, eval_run = True)[0]
         pbar.update(1)
@@ -261,13 +236,11 @@ if __name__ == '__main__':
         swa_start = args.epochs * 0.9
         swa_scheduler = SWALR(optimizer, anneal_strategy="linear", anneal_epochs=5, swa_lr=args.learningrate / 10)
     Scaler = torch.cuda.amp.GradScaler()
-    Checkpointer = utils.Checkpoint(earlystopping=args.earlystop, patience=args.earlystopPatience, verbose=False,
-                                        model_path='experiments/trained_models/checkpoint.pt',
-                                        swa_model_path='experiments/trained_models/swa_checkpoint.pt',
-                                        best_model_path = 'experiments/trained_models/best_checkpoint.pt',
-                                        final_model_path=f'./experiments/trained_models/{args.dataset}/{args.modeltype}/'
-                                                         f'config{args.experiment}_run_{args.run}.pth'
-                                        )
+    Checkpointer = utils.Checkpoint(args.combine_train_corruptions, args.dataset, args.modeltype, args.experiment,
+                                    train_corruptions, args.run, earlystopping=args.earlystop, patience=args.earlystopPatience,
+                                    verbose=False,  model_path='experiments/trained_models/checkpoint.pt',
+                                                    swa_model_path='experiments/trained_models/swa_checkpoint.pt',
+                                                    best_model_path = 'experiments/trained_models/best_checkpoint.pt')
     Traintracker = utils.TrainTracking(args.dataset, args.modeltype, args.lrschedule, args.experiment, args.run,
                             args.combine_train_corruptions, args.validonc, args.validonadv, args.swa, train_corruptions)
 
@@ -308,9 +281,9 @@ if __name__ == '__main__':
                 Checkpointer.save_checkpoint(model, optimizer, scheduler, epoch)
                 if args.swa == True:
                     Checkpointer.save_swa_checkpoint(swa_model, optimizer, swa_scheduler, epoch)
-                utils.TrainTracking.save_metrics(train_acc, valid_acc, valid_acc_robust, valid_acc_adv, valid_acc_swa,
-                                                 valid_acc_robust_swa, valid_acc_adv_swa, train_loss, valid_loss)
-                utils.TrainTracking.save_learning_curves()
+                Traintracker.save_metrics(train_acc, valid_acc, valid_acc_robust, valid_acc_adv, valid_acc_swa,
+                             valid_acc_robust_swa, valid_acc_adv_swa, train_loss, valid_loss)
+                Traintracker.save_learning_curves()
                 if Checkpointer.early_stop:
                     end_epoch = epoch
                     break

@@ -3,6 +3,33 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import torch
 import shutil
+import argparse
+import ast
+
+def str2bool(v):
+    if isinstance(v, bool):
+        return v
+    if v.lower() in ('yes', 'true', 't', 'y', '1'):
+        return True
+    elif v.lower() in ('no', 'false', 'f', 'n', '0'):
+        return False
+    else:
+        raise argparse.ArgumentTypeError(f'Error: Boolean value expected for argument {v}.')
+
+
+class str2dictAction(argparse.Action):
+    def __call__(self, parser, namespace, values, option_string=None):
+        # Parse the dictionary string into a dictionary object
+        # if values == '':
+
+        try:
+            dictionary = ast.literal_eval(values)
+            if not isinstance(dictionary, dict):
+                raise ValueError("Invalid dictionary format")
+        except (ValueError, SyntaxError) as e:
+            raise argparse.ArgumentTypeError(f"Invalid dictionary format: {values}") from e
+
+        setattr(namespace, self.dest, dictionary)
 
 def plot_images(images, corrupted_images, number):
     fig, axs = plt.subplots(number, 2)
@@ -40,7 +67,8 @@ class Checkpoint:
     """Early stops the training if validation loss doesn't improve after a given patience.
     credit to https://github.com/Bjarten/early-stopping-pytorch/tree/master for early stopping functionality"""
 
-    def __init__(self, final_model_path, earlystopping=False, patience=7, verbose=False, delta=0, trace_func=print,
+    def __init__(self, combine_train_corruptions, dataset, modeltype, experiment, train_corruption, run,
+                 earlystopping=False, patience=7, verbose=False, delta=0, trace_func=print,
                  model_path='experiments/trained_models/checkpoint.pt',
                  swa_model_path='experiments/trained_models/swa_checkpoint.pt',
                  best_model_path='experiments/trained_models/best_checkpoint.pt'
@@ -65,11 +93,16 @@ class Checkpoint:
         self.val_loss_min = 1000  # placeholder initial value
         self.delta = delta
         self.trace_func = trace_func
-        self.earlystopping = earlystopping
+        self.early_stopping = earlystopping
         self.model_path = model_path
         self.swa_model_path = swa_model_path
         self.best_model_path = best_model_path
-        self.final_model_path = final_model_path
+        if combine_train_corruptions:
+            self.final_model_path = f'./experiments/trained_models/{dataset}/{modeltype}/config{experiment}_run_{run}.pth'
+        else:
+            self.final_model_path = f'./experiments/trained_models/{dataset}/{modeltype}/config{experiment}_' \
+                    f'{train_corruption["noise_type"]}_eps_{train_corruption["epsilon"]}_{train_corruption["sphere"]}_run_{run}.pth'
+
 
     def earlystopping(self, val_acc):
 
@@ -82,7 +115,7 @@ class Checkpoint:
             self.best_model = False
             if self.verbose:
                 self.trace_func(f'EarlyStopping counter: {self.counter} out of {self.patience}')
-            if self.counter >= self.patience and self.earlystopping == True:
+            if self.counter >= self.patience and self.early_stopping == True:
                 self.early_stop = True
                 print("Early stopping")
         else:
@@ -242,70 +275,14 @@ class TrainTracking:
             print("Maximum robust validation accuracy of", max(self.valid_accs_robust), "achieved after",
                   np.argmax(self.valid_accs_robust) + 1, "epochs; ")
         if self.validonadv:
-            print("Maximum robust validation accuracy of", max(self.valid_accs_adv), "achieved after",
+            print("Maximum adversarial validation accuracy of", max(self.valid_accs_adv), "achieved after",
                   np.argmax(self.valid_accs_adv) + 1, "epochs; ")
 
-def create_report(avg_test_metrics, max_test_metrics, std_test_metrics, train_corruptions, test_corruptions,
-                      combine_train_corruptions, combine_test_corruptions, dataset, modeltype, lrschedule, experiment,
-                      test_on_c, calculate_adv_distance, calculate_autoattack_robustness, runs):
-
-    training_folder = 'combined' if combine_train_corruptions == True else 'separate'
-
-    if combine_train_corruptions == True:
-        train_corruptions_string = ['config_model']
-    else:
-        train_corruptions_string = np.array([','.join(map(str, row.values())) for row in train_corruptions])
-
-    test_corruptions_string = np.array(['Standard_Acc', 'RMSCE'])
-    if test_on_c == True:
-        test_corruptions_label = np.loadtxt('./experiments/data/c-labels.txt', dtype=list)
-        test_corruptions_string = np.append(test_corruptions_string, test_corruptions_label, axis=0)
-        test_corruptions_string = np.append(test_corruptions_string,
-                                            ['mCE-19', 'mCE-15', 'mCE-19_exNoise', 'RMSCE_C'],
-                                            axis=0)
-
-    if calculate_adv_distance == True:
-        test_corruptions_string = np.append(test_corruptions_string, ['Acc_from_PGD_adv_distance_calculation',
-                                                                      'Mean_PGD_adv_distance_with_misclassified_images_0)',
-                                                                      'Mean_PGD_adv_distance_misclassified-images_not_included)',
-                                                                      'Mean_CLEVER_score'],
-                                            axis=0)
-    if calculate_autoattack_robustness == True:
-        test_corruptions_string = np.append(test_corruptions_string,
-                                            ['Adversarial_accuracy_autoattack', 'Mean_adv_distance_autoattack)'],
-                                            axis=0)
-    if combine_test_corruptions == True:
-        test_corruptions_string = np.append(test_corruptions_string, ['Combined Noise'])
-    else:
-        test_corruptions_labels = np.array([','.join(map(str, row.values())) for row in test_corruptions])
-        test_corruptions_string = np.append(test_corruptions_string, test_corruptions_labels)
-
-    avg_report_frame = pd.DataFrame(avg_test_metrics, index=test_corruptions_string,
-                                    columns=train_corruptions_string)
-    avg_report_frame.to_csv(f'./results/{dataset}/{modeltype}/config{experiment}_{lrschedule}_{training_folder}_'
-                            f'metrics_test_avg.csv', index=True, header=True,
-                            sep=';', float_format='%1.4f', decimal=',')
-    if runs >= 2:
-        max_report_frame = pd.DataFrame(max_test_metrics, index=test_corruptions_string,
-                                        columns=train_corruptions_string)
-        std_report_frame = pd.DataFrame(std_test_metrics, index=test_corruptions_string,
-                                        columns=train_corruptions_string)
-        max_report_frame.to_csv(
-            f'./results/{dataset}/{modeltype}/config{experiment}_{lrschedule}_{training_folder}_'
-            f'metrics_test_max.csv', index=True, header=True,
-            sep=';', float_format='%1.4f', decimal=',')
-        std_report_frame.to_csv(
-            f'./results/{dataset}/{modeltype}/config{experiment}_{lrschedule}_{training_folder}_'
-            f'metrics_test_std.csv', index=True, header=True,
-            sep=';', float_format='%1.4f', decimal=',')
-
-
 class TestTracking:
-    def __init__(self, dataset, modeltype, lrschedule, experiment, runs, combine_train_corruptions, combine_test_corruptions,
+    def __init__(self, dataset, modeltype, experiment, runs, combine_train_corruptions, combine_test_corruptions,
                       test_on_c, calculate_adv_distance, calculate_autoattack_robustness, train_corruptions, test_corruptions):
         self.dataset = dataset
         self.modeltype = modeltype
-        self.lrschedule = lrschedule
         self.experiment = experiment
         self.runs = runs
         self.combine_train_corruptions = combine_train_corruptions
@@ -315,10 +292,38 @@ class TestTracking:
         self.calculate_autoattack_robustness = calculate_autoattack_robustness
         self.train_corruptions = train_corruptions
         self.test_corruptions = test_corruptions
-
         self.results_folder = f'./results/{self.dataset}/{self.modeltype}/config{self.experiment}'
 
-    def create_report(self, avg_test_metrics, max_test_metrics, std_test_metrics):
+        if combine_train_corruptions:
+            self.model_count = 1
+        else:
+            self.model_count = train_corruptions.shape[0]
+
+        self.test_count = 2
+        if test_on_c:
+            self.test_count += 23
+        if combine_test_corruptions:
+            self.test_count += 1
+        else:
+            self.test_count += test_corruptions.shape[0]
+        if calculate_adv_distance:
+            self.test_count += 4
+        if calculate_autoattack_robustness:
+            self.test_count += 2
+
+        self.all_test_metrics = np.empty([self.test_count, self.model_count, self.runs])
+
+    def create_report(self):
+
+        self.avg_test_metrics = np.empty([self.test_count, self.model_count])
+        self.std_test_metrics = np.empty([self.test_count, self.model_count])
+        self.max_test_metrics = np.empty([self.test_count, self.model_count])
+
+        for idm in range(self.model_count):
+            for ide in range(self.test_count):
+                self.avg_test_metrics[ide, idm] = self.all_test_metrics[ide, idm, :].mean()
+                self.std_test_metrics[ide, idm] = self.all_test_metrics[ide, idm, :].std()
+                self.max_test_metrics[ide, idm] = self.all_test_metrics[ide, idm, :].max()
 
         if self.combine_train_corruptions == True:
             train_corruptions_string = ['config_model']
@@ -349,14 +354,14 @@ class TestTracking:
             test_corruptions_labels = np.array([','.join(map(str, row.values())) for row in self.test_corruptions])
             test_corruptions_string = np.append(test_corruptions_string, test_corruptions_labels)
 
-        avg_report_frame = pd.DataFrame(avg_test_metrics, index=test_corruptions_string,
+        avg_report_frame = pd.DataFrame(self.avg_test_metrics, index=test_corruptions_string,
                                         columns=train_corruptions_string)
         avg_report_frame.to_csv(f'{self.results_folder}_metrics_test_avg.csv', index=True, header=True,
                                 sep=';', float_format='%1.4f', decimal=',')
         if self.runs >= 2:
-            max_report_frame = pd.DataFrame(max_test_metrics, index=test_corruptions_string,
+            max_report_frame = pd.DataFrame(self.max_test_metrics, index=test_corruptions_string,
                                             columns=train_corruptions_string)
-            std_report_frame = pd.DataFrame(std_test_metrics, index=test_corruptions_string,
+            std_report_frame = pd.DataFrame(self.std_test_metrics, index=test_corruptions_string,
                                             columns=train_corruptions_string)
             max_report_frame.to_csv(
                 f'{self.results_folder}_metrics_test_max.csv', index=True, header=True,
@@ -364,3 +369,45 @@ class TestTracking:
             std_report_frame.to_csv(
                 f'{self.results_folder}_metrics_test_std.csv', index=True, header=True,
                 sep=';', float_format='%1.4f', decimal=',')
+
+    def initialize(self, run, model):
+        self.run = run
+        self.model = model
+        self.accs = []
+
+        if self.combine_train_corruptions:
+            print(f"Run {run}, evaluating combined model ")
+            self.fileaddition = f'_'
+        else:
+            train_corruption = self.train_corruptions[model]
+            print(f"Run {run}, evaluating model trained on noise of type:", train_corruption)
+            self.fileaddition = f'_{train_corruption["noise_type"]}_eps_{train_corruption["epsilon"]}_' \
+                           f'{train_corruption["sphere"]}_'
+        self.filename = f'./experiments/trained_models/{self.dataset}/{self.modeltype}/config{self.experiment}' \
+                   f'{self.fileaddition}run_{run}.pth'
+
+    def track_results(self, new_results):
+        self.accs = self.accs + new_results
+        self.all_test_metrics[:len(self.accs), self.model, self.run] = np.array(self.accs)
+
+    def save_adv_distance(self, adv_distance_sorted, clever_scores_sorted):
+
+        adv_fig = plt.figure(figsize=(15, 5))
+        plt.scatter(range(len(adv_distance_sorted)), adv_distance_sorted, s=3, label="PGD Adversarial Distance")
+        if clever_scores_sorted != [0.0]:
+            plt.scatter(range(len(clever_scores_sorted)), clever_scores_sorted, s=3, label="Clever Score")
+        plt.xlabel("Sorted Image ID")
+        plt.ylabel("Distance")
+        plt.legend()
+        # plt.show()
+        plt.close()
+
+        adv_fig.savefig(f'results/{self.dataset}/{self.modeltype}/'
+                        f'config{self.experiment}_adversarial_distance{self.fileaddition}run_{self.run}.svg')
+
+        adv_distance_frame = pd.DataFrame({"Adversarial_Distance_sorted": adv_distance_sorted,
+                                           "Clever_Score_sorted_by_Adversarial_Distance": clever_scores_sorted})
+        adv_distance_frame.to_csv(f'./results/{self.dataset}/{self.modeltype}/config{self.experiment}_'
+                                  f'adversarial_distance{self.fileaddition}run_{self.run}.csv',
+                                  index=False, header=True, sep=';', float_format='%1.4f', decimal=',')
+
