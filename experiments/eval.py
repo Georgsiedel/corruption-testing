@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 import torch.backends.cudnn as cudnn
 import torchvision.models as torchmodels
@@ -5,8 +6,6 @@ from torch.utils.data import DataLoader
 from torchmetrics.classification import MulticlassCalibrationError
 import argparse
 import importlib
-import numpy as np
-import pandas as pd
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 import experiments.models as low_dim_models
@@ -51,8 +50,6 @@ parser.add_argument('--calculate_autoattack_robustness', type=utils.str2bool, na
                     help='Whether to calculate adversarial accuracy with Autoattack with autoattack_params')
 parser.add_argument('--autoattack_params', default={'setsize': 500, 'epsilon': 8/255, 'norm': 'Linf'},
                     type=str, action=utils.str2dictAction, metavar='KEY=VALUE', help='parameters for the trades loss function')
-parser.add_argument('--test_count', default=75, type=int, help='how many metrics are calculated in total per model')
-parser.add_argument('--model_count', default=1, type=int, help='how many models are evaluated for this experiment')
 
 args = parser.parse_args()
 configname = (f'experiments.configs.config{args.experiment}')
@@ -62,7 +59,6 @@ train_corruptions = config.train_corruptions
 
 def compute_clean(testloader, model, num_classes):
     with torch.no_grad():
-        model.eval()
         correct = 0
         total = 0
         calibration_metric = MulticlassCalibrationError(num_classes=num_classes, n_bins=15, norm='l2')
@@ -92,7 +88,7 @@ if __name__ == '__main__':
     Testtracker = utils.TestTracking(args.dataset, args.modeltype, args.experiment, args.runs,
                                 args.combine_train_corruptions, args.combine_test_corruptions, args.test_on_c,
                                 args.calculate_adv_distance, args.calculate_autoattack_robustness, train_corruptions,
-                                test_corruptions)
+                                test_corruptions, args.adv_distance_params)
 
     # Load data
     test_transforms,_ = data.create_transforms(args.dataset, aug_strat_check=False, train_aug_strat='None', resize=args.resize)
@@ -101,7 +97,7 @@ if __name__ == '__main__':
                             num_workers=args.number_workers)
 
     for run in range(args.runs):
-        for model in range(args.model_count):
+        for model in range(Testtracker.model_count):
 
             Testtracker.initialize(run, model)
 
@@ -116,6 +112,7 @@ if __name__ == '__main__':
             model = torch.nn.DataParallel(model).to(device)
             cudnn.benchmark = True
             model.load_state_dict(torch.load(Testtracker.filename)["model_state_dict"], strict=False)
+            model.eval()
 
             # Clean Test Accuracy
             acc, rmsce = compute_clean(testloader, model, num_classes)
@@ -128,10 +125,9 @@ if __name__ == '__main__':
                 Testtracker.track_results([accs_c])
 
             if args.calculate_adv_distance == True:  # adversarial distance calculation
-                adv_acc, mean_dist1, mean_dist2, mean_clever, clever_sorted, dist1_sorted = eval_adversarial.compute_adv_distance(
-                    testset, args.number_workers, model, args.adv_distance_params)
-                Testtracker.track_results([adv_acc, mean_dist1, mean_dist2, mean_clever])
-                Testtracker.save_adv_distance(dist1_sorted, clever_sorted)
+                adv_acc, dist_sorted, mean_dist = eval_adversarial.compute_adv_distance(testset, args.number_workers, model, args.adv_distance_params)
+                Testtracker.track_results(np.concatenate(([adv_acc], mean_dist)))
+                Testtracker.save_adv_distance(dist_sorted, args.adv_distance_params)
 
             if args.calculate_autoattack_robustness == True:  # adversarial accuracy calculation
                 adv_acc_aa, mean_dist_aa = eval_adversarial.compute_adv_acc(args.autoattack_params, testset, model,

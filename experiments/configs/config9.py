@@ -112,16 +112,11 @@ test_corruptions = np.array([
 test_on_c = False
 combine_test_corruptions = True #augment the test dataset with all corruptions
 calculate_adv_distance = True
-adv_distance_params = {'setsize': 500, 'nb_iters': 200, 'eps_iter': 0.0003, 'norm': 'inf', 'epsilon': 0.1,
-                       'clever': True, 'clever_batches': 500, 'clever_samples': 1024}
+adv_distance_params = {'setsize': 500, 'iters_pgd': 500, 'eps_iter': [0.0003,0.005,0.2], 'iters_second_attack': 40, 'norm': ['inf', 2, 1],
+                       "clever": True, "clever_batches": [5,10,50,500], "clever_samples": [5,20,100,1024]}
 calculate_autoattack_robustness = False
 autoattack_params = {'setsize': 500, 'epsilon': 8/255, 'norm': 'Linf'}
 
-
-if combine_train_corruptions:
-    model_count = 1
-else:
-    model_count = train_corruptions.shape[0]
 if dataset == 'CIFAR10':
     num_classes = 10
     pixel_factor = 1
@@ -133,16 +128,3 @@ elif dataset == 'ImageNet':
 elif dataset == 'TinyImageNet':
     num_classes = 200
     pixel_factor = 2
-
-
-test_count = 2
-if test_on_c:
-    test_count += 23
-if combine_test_corruptions:
-    test_count += 1
-else:
-    test_count += test_corruptions.shape[0]
-if calculate_adv_distance:
-    test_count += 4
-if calculate_autoattack_robustness:
-    test_count += 2

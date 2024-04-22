@@ -1,0 +1,8 @@
+;standard,0.0,False,beta2-5
+Standard_Acc;93,4300
+RMSCE;0,0576
+Acc_from_PGD_adv_distance_calculation;0,0000
+Mean_PGD_adv_distance_with_misclassified_images_0);0,0052
+Mean_PGD_adv_distance_misclassified-images_not_included);0,0055
+Mean_CLEVER_score;0,0021
+Combined Noise;56,1200

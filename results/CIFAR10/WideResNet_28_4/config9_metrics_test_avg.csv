@@ -1,0 +1,17 @@
+;standard,0.0,False,beta2-5
+Standard_Acc;93,4300
+RMSCE;0,0576
+Acc_from_adv_dist_calculation;0,0000
+inf-norm-Mean_adv_dist_with_misclassifications_0;0,0075
+inf-norm-Mean_adv_dist_without_misclassifications;0,0079
+inf-norm-Mean_CLEVER-1-samples;0,1626
+inf-norm-Mean_CLEVER-2-samples;0,1712
+2-norm-Mean_adv_dist_with_misclassifications_0;5,9860
+2-norm-Mean_adv_dist_without_misclassifications;6,3011
+2-norm-Mean_CLEVER-1-samples;0,0054
+2-norm-Mean_CLEVER-2-samples;0,0050
+1-norm-Mean_adv_dist_with_misclassifications_0;0,1810
+1-norm-Mean_adv_dist_without_misclassifications;0,1641
+1-norm-Mean_CLEVER-1-samples;1,3842
+1-norm-Mean_CLEVER-2-samples;1,0747
+Combined Noise;56,1800

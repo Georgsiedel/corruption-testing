@@ -9,8 +9,12 @@ from torch.utils.data import DataLoader
 from cleverhans.torch.attacks.projected_gradient_descent import projected_gradient_descent
 from autoattack import AutoAttack
 from art.estimators.classification.pytorch import PyTorchClassifier
-from art.metrics import clever_u, clever_t
-import matplotlib.pyplot as plt
+from art.attacks.evasion import (ProjectedGradientDescentPyTorch,
+                                 AutoAttack,
+                                 CarliniL2Method,
+                                 ElasticNet,
+                                 HopSkipJump)
+from art.metrics import clever_u
 from cleverhans.torch.utils import optimize_linear
 
 
@@ -88,98 +92,140 @@ def fast_gradient_validation(model_fn, x, eps, norm, criterion, clip_min=None, c
         assert np.all(asserts)
     return adv_x, outputs
 
-def pgd_with_early_stopping(model, inputs, labels, clean_predicted, eps, number_iterations, epsilon_iters, norm):
+def pgd_with_early_stopping(model, inputs, labels, clean_predicted, number_iterations, epsilon_iters, norm):
+
+    attacker = ProjectedGradientDescentPyTorch(estimator=model, norm=norm, eps=epsilon_iters * number_iterations,
+                                               eps_step=epsilon_iters, max_iter=1, verbose=False)
+    inputs = np.asarray(inputs.cpu())
+    labels = np.asarray(labels.cpu())
 
     for i in range(number_iterations):
-        adv_inputs = projected_gradient_descent(model,
-                                                inputs,
-                                                eps=eps,
-                                                eps_iter=epsilon_iters,
-                                                nb_iter=1,
-                                                norm=norm,
-                                                y = labels,
-                                                rand_init=False,
-                                                sanity_checks=False)
 
-        adv_outputs = model(adv_inputs)
-        _, adv_predicted = torch.max(adv_outputs.data, 1)
+        adv_inputs = attacker.generate(inputs, labels)
+        adv_outputs = model.predict(adv_inputs)
+        adv_predicted = np.array([np.argmax(adv_outputs)])
 
-        label_flipped = bool(adv_predicted!=clean_predicted)
+        label_flipped = bool(adv_predicted!=clean_predicted.cpu().numpy())
         if label_flipped:
             break
-        inputs = adv_inputs.clone()
-    return adv_inputs, adv_predicted
+        inputs = adv_inputs.copy()
 
-def adv_distance(testloader, model, number_iterations, epsilon, eps_iter, norm, setsize):
-    distance_list_1, image_idx_1, distance_list_2, image_idx_2 = [], [], [], []
-    model.eval()
-    correct, total = 0, 0
-    for i, (inputs, labels) in enumerate(testloader):
-        inputs, labels = inputs.to(device), labels.to(device)
-        outputs = model(inputs)
-        _, predicted = torch.max(outputs.data, 1)
+    return torch.Tensor(adv_inputs).to('cuda'), label_flipped
 
-        adv_inputs, adv_predicted = pgd_with_early_stopping(model, inputs, labels, predicted, epsilon, number_iterations, eps_iter, norm)
-        distance = torch.norm((inputs - adv_inputs), p=norm)
-        if (predicted == labels):
-            distance_list_1.append(distance)
-            image_idx_1.append(i)
-            distance_list_2.append(distance) #only originally correctly classified distances are counted
-            image_idx_2.append(i) #only originally correctly classified points
-        else:
-            distance_list_1.append(torch.tensor(0.0, device=device)) #originally misclassified distances are counted as 0
-            image_idx_1.append(i) #all points, also originally misclassified ones
+def second_attack(model, inputs, labels, clean_predicted, number_iterations, norm):
+    if norm == 2:
+        attacker = CarliniL2Method(model,
+                               max_iter=number_iterations,
+                                   verbose=False)
+    elif norm == 1:
+        attacker = ElasticNet(model,
+                      max_iter=number_iterations,
+                                   verbose=False)
+    elif norm == np.inf:
+        attacker = HopSkipJump(model,
+                         norm=norm,
+                         max_iter=number_iterations,
+                                   verbose=False)
+    else:
+        print(f'Norm {norm} not within 1, 2, or np.inf.')
+        return inputs, labels
 
-        correct += (adv_predicted == labels).sum().item()
-        total += labels.size(0)
-        if (i+1) % 20 == 0:
-            print(f"Completed: {i+1} of {setsize}, mean_distances: {sum(distance_list_1)/len(distance_list_1)}, {sum(distance_list_2)/len(distance_list_2)}, correct: {correct}, total: {total}, accuracy: {correct / total * 100}%")
+    inputs = np.asarray(inputs.cpu())
+    labels = np.asarray(labels.cpu())
+    adv_inputs = attacker.generate(inputs, labels)
+    adv_outputs = model.predict(adv_inputs)
+    adv_inputs = torch.tensor(adv_inputs, device='cuda')
+    adv_outputs = torch.tensor(adv_outputs, device='cuda')
+    _, adv_predicted = torch.max(adv_outputs.data, 1)
+    label_flipped = True if adv_predicted != clean_predicted else False
+
+    return adv_inputs, label_flipped
+
+def adv_distance(testloader, model, evalmodel, iterations_pgd, iterations_second_attack, eps_iter, norm, setsize):
+    if len(eps_iter) != len(norm):
+        print('!!! Please provide an eps_iter value for every norm')
+    distances_array = np.empty([setsize, len(norm)*3])
+    mean_distances_array = np.empty([len(norm)*2])
+
+    for id, (n, eps_i) in enumerate(zip(norm, eps_iter)):
+        print(f'Adversarial distance calculation for {n} norm')
+
+        correct, total = 0, 0
+
+        for i, (inputs, labels) in enumerate(testloader):
+            inputs, labels = inputs.to(device), labels.to(device)
+            outputs = model(inputs)
+            _, predicted = torch.max(outputs.data, 1)
+
+            if predicted == labels:
+                helper_array = np.empty([3, 2], dtype=object)
+                adv_inputs1, label_flipped1 = pgd_with_early_stopping(evalmodel, inputs, labels, predicted, iterations_pgd, eps_i, n)
+                helper_array[:,0] = [label_flipped1, adv_inputs1.cpu().numpy(), torch.norm((inputs - adv_inputs1), p=n).cpu().numpy()]
+                adv_inputs2, label_flipped2 = second_attack(evalmodel, inputs, labels, predicted, iterations_second_attack, n)
+                helper_array[:,1] = [label_flipped2, adv_inputs2.cpu().numpy(), torch.norm((inputs - adv_inputs2), p=n).cpu().numpy()]
+
+                selected_indices = np.where(helper_array[0])[0]
+                flipped = helper_array[:, selected_indices]
+                min_dist = flipped[2][np.argmin(flipped[2])]
+                min_adv_example = flipped[1][np.argmin(flipped[2])]
+
+                if not np.any(helper_array[0]):
+                    min_dist = np.min(helper_array[2])
+                    min_adv_example = np.min(helper_array[1])
+
+                distances_array[i, id*3] = min_dist
+                distances_array[i, id*3+1:id*3+3] = helper_array[2,0:2]
+
+                _, adv_predicted = torch.max(model(torch.tensor(min_adv_example, device='cuda')).data, 1)
+
+            else:
+                distances_array[i, id*3:id*3+3] = np.array([0.0, 0.0, 0.0])
+                adv_predicted = predicted
+            correct += ((adv_predicted) == labels).sum().item()
+            total += labels.size(0)
+            if (i+1) % 10 == 0:
+                print(f"Completed: {i+1} of {setsize}, mean_distances: {np.mean(distances_array[:(i+1), id*3])}, "
+                      f"{np.mean(distances_array[:(i+1), id*3][distances_array[:(i+1), id*3] != 0.0])}, correct: "
+                      f"{correct}, total: {total}, accuracy: {correct / total * 100}%")
+        mean_distances_array[id*2] = np.mean(distances_array[:, id*3])
+        mean_distances_array[id * 2 +1] = np.mean(distances_array[:, id*3][distances_array[:, id*3] != 0.0])
+
     adv_acc = correct / total
-    return distance_list_1, image_idx_1, distance_list_2, image_idx_2, adv_acc
+    return distances_array, mean_distances_array, adv_acc
 
-def clever_score(testloader, model, clever_batches, clever_samples, epsilon, norm, num_classes):
-
+def clever_score(testloader, evalmodel, clever_batches, clever_samples, epsilon, norm, setsize):
     torch.cuda.empty_cache()
-    clever_scores = []
-    image_ids = []
-    images, _ = next(iter(testloader))
-    model = PyTorchClassifier(model=model,
-                            loss=torch.nn.CrossEntropyLoss(),
-                            optimizer=torch.optim.SGD(model.parameters(), momentum= 0.9, weight_decay= 1e-4, lr=0.01),
-                            input_shape=images[0].size(),
-                            nb_classes=num_classes)
-    # Iterate through each image for CLEVER score calculation
-    for batch_idx, (inputs, targets) in enumerate(testloader):
-        for id, input in enumerate(inputs):
-            clever_score = clever_u(model,
-                                    input.numpy(),
-                                    nb_batches=clever_batches,
-                                    batch_size=clever_samples,
-                                    radius=epsilon,
-                                    norm=norm,
-                                    pool_factor=10)
+    if len(clever_samples) != len(clever_batches):
+        print('!!! clever_samples needs to be of same size as clever_batches!')
+    clever_scores = np.empty([setsize, len(clever_samples)*len(norm)])
+    mean_clever_array = np.empty([len(norm)*len(clever_batches)])
 
-            # Append the calculated CLEVER score to the list
-            clever_scores.append(clever_score)
-            # Append the image ID to the list
-            image_ids.append(id)
+    for id, (n, eps) in enumerate(zip(norm, epsilon)):
+        for j, (batches, samples) in enumerate(zip(clever_batches, clever_samples)):
+            print(f'Clever calculation for {n}-norm with {samples} samples')
+            # Iterate through each image for CLEVER score calculation
+            for batch_idx, (inputs, targets) in enumerate(testloader):
+                for r, input in enumerate(inputs):
+                    clever_score = clever_u(evalmodel,
+                                            input.numpy(),
+                                            nb_batches=batches,
+                                            batch_size=samples,
+                                            radius=eps,
+                                            norm=n,
+                                            pool_factor=10,
+                                            verbose=False)
 
-    return clever_scores, image_ids
+                    # Append the calculated CLEVER score to the list
+                    clever_scores[batch_idx, id*len(clever_batches)+j] = clever_score
+                if (batch_idx + 1) % 10 == 0:
+                    print(f"Completed: {batch_idx + 1} of {setsize}, mean CLEVER score: "
+                          f"{np.mean(clever_scores[:(batch_idx + 1), id*len(clever_batches)+j])}")
+            mean_clever_array[id*len(clever_batches)+j] = np.mean(clever_scores[:, id*len(clever_batches)+j])
+    return clever_scores, mean_clever_array
 
 def compute_adv_distance(testset, workers, model, adv_distance_params):
 
-    epsilon = adv_distance_params["epsilon"]
-    eps_iter = adv_distance_params["eps_iter"]
-    nb_iters = adv_distance_params["nb_iters"]
-    if adv_distance_params["norm"] == 'inf':
-        norm = np.inf
-    else:
-        norm = adv_distance_params["norm"]
-    clever_batches = adv_distance_params["clever_batches"]
-    clever_samples = adv_distance_params["clever_samples"]
-
-    print(f"{norm}-Adversarial Distance upper bound calculation using PGD attack with "
-          f"{nb_iters} iterations of stepsize {eps_iter}")
+    print(f"Adversarial Distance upper bound calculation using lowest of PGD and a norm-specific second attack")
     num_classes = len(testset.classes)
     truncated_testset, _ = torch.utils.data.random_split(testset,
                                                          [adv_distance_params["setsize"], len(testset)-adv_distance_params["setsize"]],
@@ -187,29 +233,50 @@ def compute_adv_distance(testset, workers, model, adv_distance_params):
     truncated_testloader = DataLoader(truncated_testset, batch_size=1, shuffle=False,
                                        pin_memory=True, num_workers=workers)
 
-    dst1, idx1, dst2, idx2, adv_acc = adv_distance(testloader=truncated_testloader, model=model,
-        number_iterations=nb_iters, epsilon=epsilon, eps_iter=eps_iter, norm=norm, setsize=adv_distance_params["setsize"])
-    mean_dist1, mean_dist2 = [np.asarray(torch.tensor(d).cpu()).mean() for d in [dst1, dst2]]
-    adv_dist_list1 = np.asarray([t.item() for t in dst1])
-    sorted_indices1 = np.argsort(adv_dist_list1)
-    adv_distance_sorted1 = adv_dist_list1[sorted_indices1]
+    images, _ = next(iter(truncated_testloader))
+    evalmodel = PyTorchClassifier(model=model,
+                            loss=torch.nn.CrossEntropyLoss(),
+                            optimizer=torch.optim.SGD(model.parameters(), momentum= 0.9, weight_decay= 1e-4, lr=0.01),
+                            input_shape=images[0].size(),
+                            nb_classes=num_classes)
+
+    adv_distance_params["norm"] = [float(e) if isinstance(e, str) else e for e in adv_distance_params["norm"]]
+
+    distances_array, mean_distances_array, adv_acc = adv_distance(testloader=truncated_testloader,
+                                    model=model, evalmodel=evalmodel, iterations_pgd=adv_distance_params["iters_pgd"],
+                                    iterations_second_attack=adv_distance_params["iters_second_attack"], norm=adv_distance_params["norm"],
+                                    eps_iter=adv_distance_params["eps_iter"], setsize=adv_distance_params["setsize"])
 
     if adv_distance_params['clever'] == True:
-        print(f"{norm}-Adversarial Distance (statistical) lower bound calculation using Clever Score with "
-              f"{clever_batches} batches with {clever_samples} samples each.")
-        clever_scores, clever_id = clever_score(testloader=truncated_testloader, model=model, clever_batches=clever_batches,
-                             clever_samples=clever_samples, epsilon=np.max(adv_dist_list1), norm=norm, num_classes=num_classes)
-        clever_scores_sorted = np.asarray(clever_scores)[sorted_indices1]
-        mean_clever_score = np.asarray(torch.tensor(clever_scores).cpu()).mean()
-        print(f'Mean CLEVER score: {mean_clever_score}')
-    else:
-        mean_clever_score = 0.0
-        clever_scores_sorted = [0.0]
+        eps = []
+        for id, n in enumerate(adv_distance_params["norm"]):
+            eps.append(np.max(distances_array[:, id * 3]))
 
-    return adv_acc*100, mean_dist1, mean_dist2, mean_clever_score, clever_scores_sorted, adv_distance_sorted1
+        print(f"Adversarial Distance (statistical) lower bound calculation using Clever Score with epsilon = largest "
+              f"adversarial attack distance, batches: "
+              f"{adv_distance_params['clever_batches']}, samples per batch: {adv_distance_params['clever_samples']}.")
+        clever_array, mean_clever_array = clever_score(testloader=truncated_testloader, evalmodel=evalmodel, clever_batches=
+                            adv_distance_params["clever_batches"], clever_samples=adv_distance_params["clever_samples"],
+                            epsilon=eps, norm=adv_distance_params["norm"], setsize=adv_distance_params["setsize"])
+    else:
+        mean_clever_array = np.zeros([len(adv_distance_params["clever_batches"]) * len(adv_distance_params["norm"])])
+        clever_array = np.array([0.0])
+    for id, n in enumerate(adv_distance_params["norm"]):
+        sorted_indices = np.argsort(distances_array[:, id * 3])
+        distances_array[:,id * 3:(id+1)*3] = distances_array[:,id * 3:(id+1)*3][sorted_indices[:, np.newaxis], np.arange(distances_array[:,id * 3:(id+1)*3].shape[1])]
+        if adv_distance_params['clever'] == True:
+            clever_array[:,id * len(adv_distance_params["clever_batches"]):(id+1)*len(adv_distance_params["clever_batches"])] = \
+                clever_array[:,id * len(adv_distance_params["clever_batches"]):(id+1)*len(adv_distance_params["clever_batches"])][sorted_indices[:, np.newaxis],
+                        np.arange(clever_array[:,id * len(adv_distance_params["clever_batches"]):(id+1)*len(adv_distance_params["clever_batches"])].shape[1])]
+    print(f'Mean CLEVER scores: {mean_clever_array}')
+
+    distances = np.concatenate((distances_array, clever_array), axis=1)
+    mean_distances = np.concatenate((mean_distances_array, mean_clever_array))
+
+    return adv_acc*100, distances, mean_distances
 
 def compute_adv_acc(autoattack_params, testset, model, workers, batchsize=10):
-    print(f"{autoattack_params['norm']} Adversarial Accuracy calculation using AutoAttack attack "
+    print(f"{autoattack_params['norm']}-norm Adversarial Accuracy calculation using AutoAttack attack "
           f"with epsilon={autoattack_params['epsilon']}")
     truncated_testset, _ = torch.utils.data.random_split(testset, [autoattack_params["setsize"],
                                 len(testset)-autoattack_params["setsize"]], generator=torch.Generator().manual_seed(42))

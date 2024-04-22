@@ -1,0 +1,8 @@
+;config_model
+Standard_Acc;96,7400
+RMSCE;0,3355
+Acc_from_PGD_adv_distance_calculation;5,2000
+Mean_PGD_adv_distance_with_misclassified_images_0);0,0121
+Mean_PGD_adv_distance_misclassified-images_not_included);0,0126
+Mean_CLEVER_score;0,0136
+Combined Noise;90,9800
