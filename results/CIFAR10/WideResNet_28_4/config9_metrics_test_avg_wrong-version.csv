@@ -1,0 +1,23 @@
+;standard,0.0,False,beta2-5
+Standard_Acc;93,4300
+RMSCE;0,0576
+Acc_from_adv_dist_calculation;0,0000
+inf-norm-Mean_adv_dist_with_misclassifications_0;0,0052
+inf-norm-Mean_adv_dist_without_misclassifications;0,0055
+inf-norm-Mean_CLEVER-5-samples;0,1459
+inf-norm-Mean_CLEVER-20-samples;0,1549
+inf-norm-Mean_CLEVER-100-samples;3,6578
+inf-norm-Mean_CLEVER-1024-samples;3,8830
+2-norm-Mean_adv_dist_with_misclassifications_0;0,0050
+2-norm-Mean_adv_dist_without_misclassifications;0,0047
+2-norm-Mean_CLEVER-5-samples;0,0043
+2-norm-Mean_CLEVER-20-samples;0,0040
+2-norm-Mean_CLEVER-100-samples;0,1114
+2-norm-Mean_CLEVER-1024-samples;0,0951
+1-norm-Mean_adv_dist_with_misclassifications_0;0,0939
+1-norm-Mean_adv_dist_without_misclassifications;0,0857
+1-norm-Mean_CLEVER-5-samples;0,2729
+1-norm-Mean_CLEVER-20-samples;0,1552
+1-norm-Mean_CLEVER-100-samples;0,1673
+1-norm-Mean_CLEVER-1024-samples;0,1709
+Combined Noise;56,3000
