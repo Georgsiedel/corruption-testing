@@ -1,8 +1,23 @@
 ;config_model
 Standard_Acc;96,7400
 RMSCE;0,3355
-Acc_from_PGD_adv_distance_calculation;5,2000
-Mean_PGD_adv_distance_with_misclassified_images_0);0,0121
-Mean_PGD_adv_distance_misclassified-images_not_included);0,0126
-Mean_CLEVER_score;0,0136
-Combined Noise;90,9800
+Acc_from_adv_dist_calculation;0,0000
+inf-norm-Mean_adv_dist_with_misclassifications_0;0,0102
+inf-norm-Mean_adv_dist_without_misclassifications;0,0106
+inf-norm-Mean_CLEVER-5-samples;0,3054
+inf-norm-Mean_CLEVER-20-samples;0,3182
+inf-norm-Mean_CLEVER-100-samples;7,6677
+inf-norm-Mean_CLEVER-1024-samples;7,9871
+2-norm-Mean_adv_dist_with_misclassifications_0;0,0163
+2-norm-Mean_adv_dist_without_misclassifications;0,0147
+2-norm-Mean_CLEVER-5-samples;0,0132
+2-norm-Mean_CLEVER-20-samples;0,0124
+2-norm-Mean_CLEVER-100-samples;0,2939
+2-norm-Mean_CLEVER-1024-samples;0,2108
+1-norm-Mean_adv_dist_with_misclassifications_0;0,1676
+1-norm-Mean_adv_dist_without_misclassifications;0,1553
+1-norm-Mean_CLEVER-5-samples;3,9575
+1-norm-Mean_CLEVER-20-samples;3,0705
+1-norm-Mean_CLEVER-100-samples;2,3689
+1-norm-Mean_CLEVER-1024-samples;2,1743
+Combined Noise;91,1400
