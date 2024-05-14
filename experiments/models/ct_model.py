@@ -40,14 +40,14 @@ class CtModel(nn.Module):
             #noisy_out = apply_noise_add_and_mult(mixed_out, noise_minibatchsize,
             #                                        corruptions, self.normalized, self.dataset, noise_patch_lower_scale=
             #                                                noise_patch_lower_scale, noise_sparsity=noise_sparsity)
-            noisy_out = noise_up(mixed_out, robust_samples=robust_samples, add_noise_level=0.4, mult_noise_level=0.2,
-                                        sparse_level=noise_sparsity, l0_level=0.2)
+            #noisy_out = noise_up(mixed_out, robust_samples=robust_samples, add_noise_level=0.4, mult_noise_level=0.2,
+            #                            sparse_level=noise_sparsity, l0_level=0.2)
             #noisy_out = torch.cat((noisy_out[:original_batchsize, :, :, :],
             #                       apply_noise_add_and_mult(noisy_out[original_batchsize:, :, :, :], noise_minibatchsize,
             #                                        corruptions, self.normalized, self.dataset, noise_patch_lower_scale=
             #                                                noise_patch_lower_scale, noise_sparsity=noise_sparsity)),
             #                       dim=0)
-            out = noisy_out
+            out = mixed_out
             #plot_images(noisy_out, mixed, 3)
 
         out = self.blocks[0](out)

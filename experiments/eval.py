@@ -122,7 +122,7 @@ if __name__ == '__main__':
                 testsets_c = data.load_data_c(args.dataset, testset, args.resize, test_transforms, subset=False, subsetsize=None)
                 accs_c = eval_corruptions.compute_c_corruptions(args.dataset, testsets_c, model, args.batchsize, num_classes,
                                                                 eval_run=False)
-                Testtracker.track_results([accs_c])
+                Testtracker.track_results(accs_c)
 
             if args.calculate_adv_distance == True:  # adversarial distance calculation
                 adv_acc, dist_sorted, mean_dist = eval_adversarial.compute_adv_distance(testset, args.number_workers, model, args.adv_distance_params)

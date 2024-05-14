@@ -112,8 +112,8 @@ test_corruptions = np.array([
 test_on_c = False
 combine_test_corruptions = True #augment the test dataset with all corruptions
 calculate_adv_distance = True
-adv_distance_params = {'setsize': 500, 'iters_pgd': 500, 'eps_iter': [0.0003,0.005,0.2], 'iters_second_attack': 40, 'norm': ['inf', 2, 1],
-                       "clever": True, "clever_batches": [5,10,50,500], "clever_samples": [5,20,100,1024]}
+adv_distance_params = {'setsize': 50, 'iters_pgd': 500, 'eps_iter': [0.2], 'iters_second_attack': 40, 'norm': [1],
+                       "clever": True, "clever_batches": [10], "clever_samples": [20]}
 calculate_autoattack_robustness = False
 autoattack_params = {'setsize': 500, 'epsilon': 8/255, 'norm': 'Linf'}
 

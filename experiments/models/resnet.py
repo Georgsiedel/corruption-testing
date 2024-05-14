@@ -86,7 +86,7 @@ class ResNet(ct_model.CtModel):
         self.layer3 = self._make_layer(block, 256, num_blocks[2], stride=2, activation_function=self.activation_function)
         self.layer4 = self._make_layer(block, 512, num_blocks[3], stride=2, activation_function=self.activation_function)
         self.linear = nn.Linear(512*block.expansion, num_classes)
-        self.blocks = [nn.Sequential(self.activation_function, self.conv1, self.bn1), self.layer1, self.layer2, self.layer3]
+        self.blocks = [nn.Sequential(self.conv1, self.bn1), self.layer1, self.layer2, self.layer3]
 
     def _make_layer(self, block, planes, num_blocks, stride, activation_function):
         strides = [stride] + [1]*(num_blocks-1)
