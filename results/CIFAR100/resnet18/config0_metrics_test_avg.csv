@@ -1,0 +1,27 @@
+;config_model
+Standard_Acc;76,1900
+RMSCE;0,1004
+gaussian_noise;36,1380
+shot_noise;43,4000
+impulse_noise;50,7580
+defocus_blur;69,3020
+glass_blur;47,6300
+motion_blur;62,5180
+zoom_blur;66,5200
+snow;62,4600
+frost;56,3700
+fog;66,3220
+brightness;74,0000
+contrast;71,2640
+elastic_transform;64,7920
+pixelate;56,3200
+jpeg_compression;53,3840
+speckle_noise;44,8320
+gaussian_blur;65,7540
+spatter;67,6540
+saturate;68,4140
+mCE-19;59,3596
+mCE-15;58,7452
+mCE-19_exNoise;63,5136
+RMSCE_C;0,1673
+Combined Noise;48,6000

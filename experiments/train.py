@@ -136,8 +136,6 @@ def train_epoch(pbar):
 
         Scaler.unscale_(optimizer)
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0, norm_type=2.0)
-        #for name, param in model.named_parameters():
-        #        print(name, param.grad)
         Scaler.step(optimizer)
         Scaler.update()
         torch.cuda.synchronize()

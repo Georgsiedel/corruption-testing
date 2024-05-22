@@ -55,7 +55,7 @@ class CtModel(nn.Module):
         for i, ResidualBlock in enumerate(self.blocks[1:]):
             out = ResidualBlock(out)
             if k == (i + 1):  # Do manifold mixup if k is greater 0
-                mixed_out, targets = mixup_process(out, targets, robust_samples, self.num_classes, mixup_alpha, mixup_p,
+                out, targets = mixup_process(out, targets, robust_samples, self.num_classes, mixup_alpha, mixup_p,
                                          cutmix_alpha, cutmix_p, manifold=True, inplace=True)
                 out = noise_up(out, robust_samples=robust_samples, add_noise_level=1.0, mult_noise_level=0.5,
                                         sparse_level=noise_sparsity, l0_level=0.2)
