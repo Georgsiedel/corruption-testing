@@ -201,18 +201,24 @@ def valid_epoch(pbar, net):
 if __name__ == '__main__':
     # Load and transform data
     print('Preparing data..')
-    transforms_preprocess, transforms_augmentation = data.create_transforms(args.dataset, args.aug_strat_check, args.train_aug_strat, args.resize, args.RandomEraseProbability)
+    transforms_preprocess, transforms_augmentation, transforms_basic = data.create_transforms(args.dataset,
+                                args.aug_strat_check, args.train_aug_strat, args.resize, args.RandomEraseProbability)
+
     lossparams = args.trades_lossparams | args.robust_lossparams | args.lossparams
     criterion = losses.Criterion(args.loss, trades_loss=args.trades_loss, robust_loss=args.robust_loss, **lossparams)
-    trainset, validset, testset, num_classes = data.load_data(transforms_preprocess, args.dataset, args.validontest, transforms_augmentation, run=args.run, robust_samples=criterion.robust_samples)
+
+    trainset, validset, testset, num_classes = data.load_data(args.dataset, args.validontest, transforms_preprocess,
+                        transforms_augmentation, transforms_basic=transforms_basic, transforms_generated=transforms_augmentation,
+                        run=args.run, robust_samples=criterion.robust_samples, add_generated_ratio=args.add_generated_ratio)
     testsets_c = data.load_data_c(args.dataset, testset, args.resize, transforms_preprocess, args.validonc, subsetsize=200)
-    trainloader = DataLoader(trainset, batch_size=args.batchsize, shuffle=True, pin_memory=True, collate_fn=None, num_workers=args.number_workers)
-    validationloader = DataLoader(validset, batch_size=args.batchsize, shuffle=True, pin_memory=True, num_workers=args.number_workers)
+
+    trainloader, validationloader = data.load_loader(trainset, validset, args.batchsize, args.number_workers,
+                                                     args.add_generated_ratio, total_samples=trainset.original_length)
 
     # Construct model
     print(f'\nBuilding {args.modeltype} model with {args.modelparams} | Augmentation strategy: {args.aug_strat_check}'
           f' | Loss Function: {args.loss}')
-    if args.dataset == 'CIFAR10' or 'CIFAR100' or 'TinyImageNet':
+    if args.dataset in ('CIFAR10', 'CIFAR100', 'TinyImageNet'):
         model_class = getattr(low_dim_models, args.modeltype)
         model = model_class(dataset=args.dataset, normalized =args.normalize, num_classes=num_classes,
                             factor=args.pixel_factor, **args.modelparams)
@@ -231,8 +237,8 @@ if __name__ == '__main__':
         scheduler = optim.lr_scheduler.SequentialLR(optimizer, schedulers=[warmupscheduler, scheduler], milestones=[args.warmupepochs])
     if args.swa == True:
         swa_model = AveragedModel(model)
-        swa_start = args.epochs * 0.9
-        swa_scheduler = SWALR(optimizer, anneal_strategy="linear", anneal_epochs=5, swa_lr=args.learningrate / 10)
+        swa_start = args.epochs * 0.85
+        swa_scheduler = SWALR(optimizer, anneal_strategy="linear", anneal_epochs=5, swa_lr=args.learningrate / 3)
     Scaler = torch.cuda.amp.GradScaler()
     Checkpointer = utils.Checkpoint(args.combine_train_corruptions, args.dataset, args.modeltype, args.experiment,
                                     train_corruptions, args.run, earlystopping=args.earlystop, patience=args.earlystopPatience,
@@ -262,16 +268,15 @@ if __name__ == '__main__':
                 train_acc, train_loss = train_epoch(pbar)
                 valid_acc, valid_loss, valid_acc_robust, valid_acc_adv = valid_epoch(pbar, model)
 
-                if args.lrschedule == 'ReduceLROnPlateau':
-                    scheduler.step(valid_loss)
-                else:
-                    scheduler.step()
-
                 if args.swa == True and epoch > swa_start:
                     swa_model.update_parameters(model)
                     swa_scheduler.step()
                     valid_acc_swa, valid_loss_swa, valid_acc_robust_swa, valid_acc_adv_swa = valid_epoch(pbar, swa_model)
                 else:
+                    if args.lrschedule == 'ReduceLROnPlateau':
+                        scheduler.step(valid_loss)
+                    else:
+                        scheduler.step()
                     valid_acc_swa, valid_acc_robust_swa, valid_acc_adv_swa = valid_acc, valid_acc_robust, valid_acc_adv
 
                 # Check for best model, save model(s) and learning curve and check for earlystopping conditions

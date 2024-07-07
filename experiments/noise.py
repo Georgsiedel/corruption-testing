@@ -58,55 +58,16 @@ def apply_noise_add_and_mult(batch, minibatchsize, corruptions, normalized, data
 
     return new_batch
 
-class Noise_Sampler(torch.nn.Module):
-    def __init__(self, num_classes: int, p: float = 0.5, alpha: float = 1.0, inplace: bool = False) -> None:
-        super().__init__()
-
-        if num_classes < 1:
-            raise ValueError(
-                f"Please provide a valid positive value for the num_classes. Got num_classes={num_classes}"
-            )
-
-        if alpha <= 0:
-            raise ValueError("Alpha param can't be zero.")
-
-        self.num_classes = num_classes
-        self.p = p
-        self.alpha = alpha
-        self.inplace = inplace
-
-    def forward(self, batch, target):
-
-        def apply_lp_corruption(batch, minibatchsize, combine_train_corruptions, train_corruptions,
-                                concurrent_combinations, max, noise, epsilon):
-
-            minibatches = batch.view(-1, minibatchsize, batch.size()[1], batch.size()[2], batch.size()[3])
-            epsilon = float(epsilon)
-
-            for id, minibatch in enumerate(minibatches):
-                if combine_train_corruptions == True:
-                    corruptions_list = random.sample(list(train_corruptions), k=concurrent_combinations)
-                    for x, (noise_type, train_epsilon, max) in enumerate(corruptions_list):
-                        train_epsilon = float(train_epsilon)
-                        minibatch = sample_lp_corr_batch(noise_type, train_epsilon, minibatch, max)
-                    minibatches[id] = minibatch
-                else:
-                    minibatch = sample_lp_corr_batch(noise, epsilon, minibatch, max)
-                    minibatches[id] = minibatch
-            batch = minibatches.view(-1, batch.size()[1], batch.size()[2], batch.size()[3])
-
-            return batch
-
-def _noise(x, add_noise_level=0.0, mult_noise_level=0.0, sparse_level=0.0, l0_level = 0.0):
+def _noising(x, add_noise_level=0.0, mult_noise_level=0.0, sparse_level=0.0, l0_level = 0.0):
     # based on https://github.com/erichson/NoisyMix
     add_noise = 0.0
     mult_noise = 1.0
     with torch.cuda.device(0):
         std = torch.var(x).detach() ** 0.5
         if add_noise_level > 0.0:
-            add_noise = add_noise_level * np.random.beta(2, 5) * torch.cuda.FloatTensor(x.shape).normal_()
+            add_noise = add_noise_level * np.random.beta(2, 5) * torch.randn(size=x.shape, dtype=torch.float16, device=device)
             #torch.clamp(add_noise, min=-(2*std), max=(2*std), out=add_noise) # clamp
-            sparse = torch.cuda.FloatTensor(x.shape).uniform_()
+            sparse = torch.rand(x.shape, dtype=torch.float16, device=device)
             add_noise[sparse<sparse_level] = 0
 
         rand = random.random()
@@ -115,8 +76,8 @@ def _noise(x, add_noise_level=0.0, mult_noise_level=0.0, sparse_level=0.0, l0_le
             l0_batch = l0(x, np.random.beta(2, 5)*l0_level, std, sparse_level)
             return l0_batch
         elif mult_noise_level > 0.0:
-            mult_noise = mult_noise_level * np.random.beta(2, 5) * (2*torch.cuda.FloatTensor(x.shape).uniform_()-1) + 1
-            sparse = torch.cuda.FloatTensor(x.shape).uniform_()
+            mult_noise = mult_noise_level * np.random.beta(2, 5) * (2*torch.rand(x.shape, dtype=torch.float16, device=device)-1) + 1
+            sparse = torch.rand(x.shape, dtype=torch.float16, device=device)
             mult_noise[sparse<sparse_level] = 1.0
 
     return mult_noise * x + add_noise
@@ -126,7 +87,7 @@ def noise_up(x, robust_samples=0, add_noise_level=0.0, mult_noise_level=0.0, spa
     q = np.int(x.shape[0] / (robust_samples+1))
     sparsity = random.random() * sparse_level
     for i in range(robust_samples+1):
-        x[q*i:q*(i+1)] = _noise(x[q*i:q*(i+1)], add_noise_level=add_noise_level * (i+1), mult_noise_level=mult_noise_level,
+        x[q*i:q*(i+1)] = _noising(x[q*i:q*(i+1)], add_noise_level=add_noise_level * (i+1), mult_noise_level=mult_noise_level,
                               sparse_level=sparsity, l0_level=l0_level)
     return x
 
@@ -143,18 +104,18 @@ def l0(batch, epsilon, std, sparsity):
     mask = torch.full(batch.size(), False, dtype=torch.bool, device=device)
     mask.view(-1)[indices] = True
     # apply sparsity: a share of the random impulse noise pixels is left out
-    sparse_matrix = torch.cuda.FloatTensor(batch.shape).uniform_()
+    sparse_matrix = torch.rand(batch.shape, dtype=torch.float16, device=device)
     mask[sparse_matrix < sparsity] = False
 
-    random_numbers = random.sample([torch.randint(2, size=batch.size(), dtype=torch.float16, device=device, requires_grad=False),
-                                    torch.cuda.FloatTensor(batch.size()).uniform_(0, 1)], 1)[0]
+    random_numbers = random.sample([torch.randint(2, size=batch.shape, dtype=torch.float16, device=device),
+                                    torch.rand(batch.shape, dtype=torch.float16, device=device)], 1)[0]
     random_numbers = (random_numbers * 2 - 1) * std * 3
     l0_batch = torch.where(mask, random_numbers, batch)
 
     return l0_batch
 
 def do_noisy_mixup(x, y, num_classes, jsd=0, alpha=0.0, add_noise_level=0.0, mult_noise_level=0.0, sparse_level=0.0):
-    # based on https://github.com/erichson/NoisyMix
+    #https://github.com/erichson/NoisyMix
     lam = np.random.beta(alpha, alpha) if alpha > 0.0 else 1.0
     if jsd == 0:
         index = torch.randperm(x.size()[0]).cuda()
@@ -174,6 +135,25 @@ def do_noisy_mixup(x, y, num_classes, jsd=0, alpha=0.0, add_noise_level=0.0, mul
     y = torch.nn.functional.one_hot(y, num_classes=num_classes).to(dtype=y.dtype)
     y = lam * y + (1 - lam) * y[index]  # added
     return x, y
+
+def _noise(x, add_noise_level=0.0, mult_noise_level=0.0, sparse_level=0.0):
+    #https://github.com/erichson/NoisyMix
+    add_noise = 0.0
+    mult_noise = 1.0
+    with torch.cuda.device(0):
+        if add_noise_level > 0.0:
+            var = torch.var(x) ** 0.5
+            add_noise = add_noise_level * np.random.beta(2, 5) * torch.cuda.FloatTensor(x.shape).normal_()
+            # torch.clamp(add_noise, min=-(2*var), max=(2*var), out=add_noise) # clamp
+            sparse = torch.cuda.FloatTensor(x.shape).uniform_()
+            add_noise[sparse < sparse_level] = 0
+        if mult_noise_level > 0.0:
+            mult_noise = mult_noise_level * np.random.beta(2, 5) * (
+                        2 * torch.cuda.FloatTensor(x.shape).uniform_() - 1) + 1
+            sparse = torch.cuda.FloatTensor(x.shape).uniform_()
+            mult_noise[sparse < sparse_level] = 1.0
+
+    return mult_noise * x + add_noise
 
 def get_image_mask(batch, noise_patch_lower_scale=1.0, ratio=[0.3, 3.3]):
         """Get image mask for Patched Noise (see e.g. Patch Gaussian paper).
@@ -271,9 +251,9 @@ def sample_lp_corr_batch(noise_type, epsilon, batch, density_distribution_max, m
                 sign = np.where(rand < 0.5, -1, 1)
                 corruption = torch.from_numpy(sign * epsilon)
             else: #sample uniformly inside the norm ball
-                corruption = torch.cuda.FloatTensor(batch.shape).uniform_(-epsilon, epsilon)
+                corruption = (torch.rand(batch.shape, dtype=torch.float16, device=device) - 0.5) * 2 / epsilon
         elif noise_type == 'gaussian': #note that this has no option for density_distribution=max
-            corruption = torch.cuda.FloatTensor(batch.shape).normal_(0, epsilon)
+            corruption = torch.randn(size=batch.shape, dtype=torch.float16, device=device) * epsilon
         elif noise_type == 'uniform-l0-impulse':
             num_dimensions = torch.numel(batch[0])
             num_pixels = int(num_dimensions * epsilon)
@@ -283,13 +263,13 @@ def sample_lp_corr_batch(noise_type, epsilon, batch, density_distribution_max, m
             mask = torch.full(batch.size(), False, dtype=torch.bool, device=device)
             mask.view(-1)[indices] = True
             #apply sparsity: a share of the random impulse noise pixels is left out
-            sparse_matrix = torch.cuda.FloatTensor(batch.shape).uniform_()
+            sparse_matrix = torch.rand(batch.shape, dtype=torch.float16, device=device)
             mask[sparse_matrix < sparsity] = False
 
             if density_distribution_max == True:
                 random_numbers = torch.randint(2, size=batch.size(), dtype=torch.float16, device=device)
             else:
-                random_numbers = torch.cuda.FloatTensor(batch.shape).uniform_(0, 1)
+                random_numbers = torch.rand(batch.shape, dtype=torch.float16, device=device)
             if manifold:
                 random_numbers = (random_numbers * 2) - 1
 
@@ -307,7 +287,7 @@ def sample_lp_corr_batch(noise_type, epsilon, batch, density_distribution_max, m
             lp = [float(x) for x in re.findall(r'-?\d+\.?\d*', noise_type)][0]
             u = dist.Gamma(1 / lp, 1).sample(img_corr.shape).to(device)
             u = u ** (1 / lp)
-            sign = torch.where(torch.cuda.FloatTensor(img_corr.shape).uniform_(0, 1) < 0.5, -1, 1)
+            sign = torch.where(torch.rand(img_corr.shape, dtype=torch.float16, device=device) < 0.5, -1, 1)
             norm = torch.sum(abs(u) ** lp) ** (1 / lp)  # scalar, norm samples to lp-norm-sphere
             if density_distribution_max == True:
                 r = 1
@@ -323,7 +303,7 @@ def sample_lp_corr_batch(noise_type, epsilon, batch, density_distribution_max, m
 
         corruption = corruption.to(device)#.clone()
         #sparsity is applied
-        sparse_matrix = torch.cuda.FloatTensor(batch.shape).uniform_()
+        sparse_matrix = torch.rand(batch.shape, dtype=torch.float16, device=device)
         #corruption[sparse_matrix < sparsity] = 0
         sparse_corruption = torch.where(sparse_matrix < sparsity, 0, corruption)
 
@@ -361,7 +341,7 @@ def sample_lp_corr_img(noise_type, epsilon, img, density_distribution_max):
                 random_numbers = torch.randint(2, size=img.size(), dtype=torch.float16).to(device)
 
             else:
-                random_numbers = torch.cuda.FloatTensor(img.shape).uniform_(0, 1)
+                random_numbers = torch.rand(batch.shape, dtype=torch.float16, device=device)
             img_corr = torch.where(mask, random_numbers, img)
             return img_corr
         elif 'uniform-l' in noise_type:  #Calafiore1998: Uniform Sample Generation in lp Balls for Probabilistic Robustness Analysis

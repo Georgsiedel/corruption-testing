@@ -1,8 +1,0 @@
-;standard,0.0,False,beta2-5
-Standard_Acc;93,4300
-RMSCE;0,0576
-Acc_from_adv_dist_calculation;0,0000
-1-norm-Mean_adv_dist_with_misclassifications_0;3,1492
-1-norm-Mean_adv_dist_without_misclassifications;3,2135
-1-norm-Mean_CLEVER-20-samples;0,1489
-Combined Noise;56,1500

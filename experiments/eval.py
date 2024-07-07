@@ -102,7 +102,7 @@ if __name__ == '__main__':
             Testtracker.initialize(run, model)
 
             # Load model
-            if args.dataset == 'CIFAR10' or 'CIFAR100' or 'TinyImageNet':
+            if args.dataset in ('CIFAR10', 'CIFAR100', 'TinyImageNet'):
                 model_class = getattr(low_dim_models, args.modeltype)
                 model = model_class(dataset=args.dataset, normalized=args.normalize, num_classes=num_classes,
                                     factor=args.pixel_factor, **args.modelparams)

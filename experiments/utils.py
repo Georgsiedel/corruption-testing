@@ -303,7 +303,7 @@ class TestTracking:
 
         self.test_count = 2
         if test_on_c:
-            self.test_count += 23
+            self.test_count += 34
         if combine_test_corruptions:
             self.test_count += 1
         else:
@@ -336,9 +336,14 @@ class TestTracking:
         test_corruptions_string = np.array(['Standard_Acc', 'RMSCE'])
         if self.test_on_c == True:
             test_corruptions_label = np.loadtxt('./experiments/data/c-labels.txt', dtype=list)
+            if self.dataset == 'CIFAR10' or self.dataset == 'CIFAR100':
+                test_corruptions_bar_label = np.loadtxt('./experiments/data/c-bar-labels-cifar.txt', dtype=list)
+            elif self.dataset == 'ImageNet' or self.dataset == 'TinyImageNet':
+                test_corruptions_bar_label = np.loadtxt('./experiments/data/c-bar-labels-IN.txt', dtype=list)
             test_corruptions_string = np.append(test_corruptions_string, test_corruptions_label, axis=0)
+            test_corruptions_string = np.append(test_corruptions_string, test_corruptions_bar_label, axis=0)
             test_corruptions_string = np.append(test_corruptions_string,
-                                                ['mCE-19', 'mCE-15', 'mCE-19_exNoise', 'RMSCE_C'],
+                                                ['Acc_C-all-19', 'Acc_C-original-15', 'Acc_C-bar-10', 'Acc_all-ex-pixelwise-noise-24', 'RMSCE_C'],
                                                 axis=0)
 
         if self.calculate_adv_distance == True:

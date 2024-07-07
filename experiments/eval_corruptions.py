@@ -41,10 +41,10 @@ def compute_p_corruptions(testloader, model, test_corruptions, dataset):
 def compute_c_corruptions(dataset, testsets_c, model, batchsize, num_classes, eval_run = False):
     accs_c, rmsce_c_list = [], []
     if eval_run == False:
-        print(f"Testing on {dataset}-c Benchmark Noise (Hendrycks 2019)")
+        print(f"Testing on {dataset}-c/c-bar Benchmark")
 
     for corruption, corruption_testset in testsets_c.items():
-        testloader_c = DataLoader(corruption_testset, batch_size=batchsize, shuffle=True, pin_memory=True, num_workers=1)
+        testloader_c = DataLoader(corruption_testset, batch_size=batchsize, shuffle=False, pin_memory=True, num_workers=0)
         acc, rmsce_c = compute_c(testloader_c, model, num_classes)
         accs_c.append(acc)
         rmsce_c_list.append(rmsce_c)
@@ -53,13 +53,15 @@ def compute_c_corruptions(dataset, testsets_c, model, batchsize, num_classes, ev
 
     rmsce_c = np.average(np.asarray(rmsce_c_list))
     if eval_run == False:
-        print("Robust Accuracy all (19 corruptions): ", sum(accs_c[0:19]) / 19, "%,"
-            "Robust Accuracy original (15 corruptions): ", sum(accs_c[0:15]) / 15, "%, "
-            "Robust Accuracy ex noise (15 corruptions): ", (sum(accs_c[3:15]) + sum(accs_c[16:19])) / 15, "%, "
-            "RMSCE-C: ", rmsce_c)
+        print("Robust Accuracy C-all (19 corruptions): ", sum(accs_c[0:19]) / 19, "%,"
+            "Robust Accuracy C-original (15 corruptions): ", sum(accs_c[0:15]) / 15, "%, "
+            "Robust Accuracy C-bar (10 corruptions): ", sum(accs_c[19:29]) / 10, "%, "
+            "Robust Accuracy combined ex pixel-wise noise (24 corruptions): ", (sum(accs_c[3:15]) + sum(accs_c[16:19]) + sum(accs_c[20:29])) / 24, "%, "
+            "RMSCE-C average: ", rmsce_c)
         accs_c.append(sum(accs_c[0:19]) / 19)
         accs_c.append(sum(accs_c[0:15]) / 15)
-        accs_c.append((sum(accs_c[3:15]) + sum(accs_c[16:19])) / 15)
+        accs_c.append(sum(accs_c[19:29]) / 10)
+        accs_c.append((sum(accs_c[3:15]) + sum(accs_c[16:19]) + sum(accs_c[20:29])) / 24)
         accs_c.append(rmsce_c)
 
     return accs_c
