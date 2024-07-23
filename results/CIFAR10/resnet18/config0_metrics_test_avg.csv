@@ -11,7 +11,7 @@ zoom_blur;87,2840
 snow;84,5180
 frost;81,7360
 fog;89,3780
-brightness;92,7060
+brightness;92,7080
 contrast;90,5160
 elastic_transform;85,9920
 pixelate;74,7660
@@ -20,8 +20,19 @@ speckle_noise;70,8420
 gaussian_blur;86,8100
 spatter;88,6700
 saturate;91,5460
-mCE-19;81,9003
-mCE-15;81,2159
-mCE-19_exNoise;85,5604
-RMSCE_C;0,1003
-Combined Noise;69,2200
+blue_noise;76,7460
+brownish_noise;74,3360
+checkerboard_cutout;80,4060
+circular_motion_blur;89,5780
+inverse_sparkles;61,1600
+lines;75,3980
+pinch_and_twirl;89,2960
+ripple;76,5160
+sparkles;82,2840
+transverse_chromatic_abberation;65,1300
+Acc_C-all-19;81,9004
+Acc_C-original-15;81,2160
+Acc_C-bar-10;77,0850
+Acc_all-ex-pixelwise-noise-24;82,3963
+RMSCE_C;0,1079
+Combined Noise;62,4200

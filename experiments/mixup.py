@@ -63,7 +63,7 @@ class RandomMixup(torch.nn.Module):
 
         lambda_param = np.random.beta(self.alpha, self.alpha) if self.alpha > 0.0 else 1.0
 
-        q = np.int(batch.shape[0] / (robust_samples+1))
+        q = int(batch.shape[0] / (robust_samples+1))
         index = torch.randperm(q).cuda()
         for i in range(robust_samples+1):
             batch[q*i:q*(i+1)] = lambda_param * batch[q*i:q*(i+1)] + (1 - lambda_param) * batch[q*i:q*(i+1)][index]
@@ -169,7 +169,7 @@ class RandomCutmix(torch.nn.Module):
         #target_rolled = target.roll(1, 0)
         #target_weighted = target*lambda_param + target_rolled * (1.0 - lambda_param)
 
-        q = np.int(batch.shape[0] / (robust_samples+1))
+        q = int(batch.shape[0] / (robust_samples+1))
         index = torch.randperm(q).cuda()
         for i in range(robust_samples+1):
             batch[q*i:q*(i+1), :, y1:y2, x1:x2] = batch[q*i:q*(i+1), :, y1:y2, x1:x2][index]

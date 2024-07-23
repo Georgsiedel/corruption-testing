@@ -3,12 +3,13 @@ from __future__ import division
 from __future__ import print_function
 
 import torch
-
+from PIL import Image
 import torch.cuda.amp
 import torchvision.transforms as transforms
+import torchvision.transforms.functional as TF
 from sklearn.model_selection import train_test_split
 import torchvision
-from torch.utils.data import Subset, Dataset, ConcatDataset, RandomSampler, BatchSampler
+from torch.utils.data import Subset, Dataset, ConcatDataset, RandomSampler, BatchSampler, Sampler, DataLoader
 import numpy as np
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
@@ -37,12 +38,9 @@ class CombinedDataset(Dataset):
         self.original_dataset = original_dataset  # Assuming cifar_dataset is preloaded with or without transforms
         self.transform = transform  # Save the transform passed to the constructor
 
-        generated_images = list(map(Image.fromarray, generated_dataset['image']))
-        generated_labels = generated_dataset['label']
         self.original_length = len(original_dataset)
-        self.generated_length = len(generated_images)
 
-        if self.generated_dataset == None:
+        if generated_dataset == None:
             original_images, original_labels = zip(*original_dataset)
             if isinstance(original_images[0], torch.Tensor):
                 original_images = TF.to_pil_image(original_images)
@@ -51,10 +49,14 @@ class CombinedDataset(Dataset):
             self.sources = [True] * self.original_length
 
         else:
+            generated_images = list(map(Image.fromarray, generated_dataset['image']))
+            generated_labels = generated_dataset['label']
+            self.generated_length = len(generated_images)
+
             # Prepare lists for combined data
             self.images = [None] * (self.original_length + self.generated_length)
             self.labels = [None] * (self.original_length + self.generated_length)
-            self.original = [None] * (self.original_length + self.generated_length)
+            self.sources = [None] * (self.original_length + self.generated_length)
 
             # Transform and append original data
             original_images, original_labels = zip(*original_dataset)
@@ -113,10 +115,6 @@ class BalancedRatioSampler(Sampler):
             original_indices = original_perm[start:start + num_original]
             generated_indices = generated_perm[start:start + num_generated] + self.original_size
 
-            #if len(original_indices) + len(generated_indices) < self.batch_size:
-            #    needed_from_original = self.batch_size - len(generated_indices)
-            #    original_indices = original_perm[start:start + needed_from_original]
-
             # Combine
             batch_indices = torch.cat((original_indices, generated_indices))
 
@@ -155,26 +153,26 @@ class AugmentedDataset(torch.utils.data.Dataset):
     return len(self.dataset)
 
 def load_data(dataset, validontest, transforms_preprocess, transforms_augmentation = None, transforms_basic = None,
-              transforms_generated = None, run=0, robust_samples=0, add_generated_ratio=0.0):
+              transforms_generated = None, run=0, robust_samples=0, generated_ratio=0.0):
 
     # Trainset and Validset
     if transforms_augmentation is not None:
         if dataset == 'ImageNet' or dataset == 'TinyImageNet':
-            base_dataset = torchvision.datasets.ImageFolder(root=f'./experiments/data/{dataset}/train')
+            base_trainset = torchvision.datasets.ImageFolder(root=f'./experiments/data/{dataset}/train')
         else:
             load_helper = getattr(torchvision.datasets, dataset)
-            base_dataset = load_helper(root='./experiments/data', train=True, download=True)
+            base_trainset = load_helper(root='./experiments/data', train=True, download=True)
 
         if validontest == False:
             validsplit = 0.2
             train_indices, val_indices, _, _ = train_test_split(
-                range(len(base_dataset)),
-                base_dataset.targets,
-                stratify=base_dataset.targets,
+                range(len(base_trainset)),
+                base_trainset.targets,
+                stratify=base_trainset.targets,
                 test_size=validsplit,
                 random_state=run)  # same validation split when calling train multiple times, but a random new validation on multiple runs
-            base_dataset = Subset(base_dataset, train_indices)
-            validset = Subset(base_dataset, val_indices)
+            base_trainset = Subset(base_trainset, train_indices)
+            validset = Subset(base_trainset, val_indices)
             validset = list(map(transforms_preprocess, validset))
         else:
             if dataset == 'ImageNet' or dataset == 'TinyImageNet':
@@ -187,10 +185,9 @@ def load_data(dataset, validontest, transforms_preprocess, transforms_augmentati
             else:
                 print('Dataset not loadable')
 
-        generated_dataset = np.load(f'./experiments/data/{dataset}-add-1m-dm.npz') if add_generated_ratio > 0.0 else None
-        dataset = CombinedDataset(base_dataset, generated_dataset, transform=transforms_basic)
-
-        trainset = AugmentedDataset(dataset, transforms_preprocess, transforms_augmentation, transforms_generated,
+        generated_dataset = np.load(f'./experiments/data/{dataset}-add-1m-dm.npz') if generated_ratio > 0.0 else None
+        trainset = CombinedDataset(base_trainset, generated_dataset, transform=transforms_basic)
+        trainset = AugmentedDataset(trainset, transforms_preprocess, transforms_augmentation, transforms_generated,
                                     robust_samples)
     else:
         trainset = None
@@ -205,8 +202,7 @@ def load_data(dataset, validontest, transforms_preprocess, transforms_augmentati
         testset = load_helper(root='./experiments/data', train=False, download=True, transform=transforms_preprocess)
     else:
         print('Dataset not loadable')
-
-    num_classes = len(validset.classes)
+    num_classes = len(testset.classes)
 
     return trainset, validset, testset, num_classes
 
@@ -219,11 +215,11 @@ def load_data_c(dataset, testset, resize, test_transforms, subset, subsetsize):
     if dataset == 'CIFAR10' or dataset == 'CIFAR100':
         #c-bar-corruption benchmark: https://github.com/facebookresearch/augmentation-corruption
         corruptions_bar = np.asarray(np.loadtxt('./experiments/data/c-bar-labels-cifar.txt', dtype=list))
-        corruptions = np.concatenate((corruptions_c, corruptions_bar))
+        corruptions = [(string, 'c') for string in corruptions_c] + [(string, 'c-bar') for string in corruptions_bar]
 
-        for corruption in corruptions:
+        for corruption, set in corruptions:
             subtestset = testset
-            np_data_c = np.load(f'./experiments/data/{dataset}-c/{corruption}.npy')
+            np_data_c = np.load(f'./experiments/data/{dataset}-{set}/{corruption}.npy')
             np_data_c = np.array(np.array_split(np_data_c, 5))
 
             if subset == True:
@@ -238,9 +234,9 @@ def load_data_c(dataset, testset, resize, test_transforms, subset, subsetsize):
     elif dataset == 'ImageNet' or dataset == 'TinyImageNet':
         #c-bar-corruption benchmark: https://github.com/facebookresearch/augmentation-corruption
         corruptions_bar = np.asarray(np.loadtxt('./experiments/data/c-bar-labels-IN.txt', dtype=list))
-        corruptions = np.concatenate((corruptions_c, corruptions_bar))
-        for corruption in corruptions:
-            intensity_datasets = [torchvision.datasets.ImageFolder(root=f'./experiments/data/{dataset}-c/' + corruption + '/' + str(intensity),
+        corruptions = [(string, 'c') for string in corruptions_c] + [(string, 'c-bar') for string in corruptions_bar]
+        for corruption, set in corruptions:
+            intensity_datasets = [torchvision.datasets.ImageFolder(root=f'./experiments/data/{dataset}-{set}/' + corruption + '/' + str(intensity),
                                                                    transform=test_transforms) for intensity in range(1, 6)]
             if subset == True:
                 selected_indices = np.random.choice(len(intensity_datasets[0]), subsetsize, replace=False)
@@ -255,7 +251,7 @@ def load_data_c(dataset, testset, resize, test_transforms, subset, subsetsize):
         c_datasets = ConcatDataset(c_datasets)
         c_datasets_dict = {'combined': c_datasets}
     else:
-        c_datasets_dict = {label: dataset for label, dataset in zip(np.concatenate((corruptions, corruptions_bar)), c_datasets)}
+        c_datasets_dict = {label: dataset for label, dataset in zip([corr for corr, _ in corruptions], c_datasets)}
 
     return c_datasets_dict
 
@@ -301,14 +297,14 @@ def create_transforms(dataset, aug_strat_check, train_aug_strat, resize = False,
         transforms_aug_1 = transforms.Compose([flip])
     if aug_strat_check == True:
         tf = getattr(transforms, train_aug_strat)
-        transforms_aug_2 = transforms.Compose([tf()])
+        transforms_augmentation = transforms.Compose([tf(), transforms_preprocess])
     else:
-        transforms_aug_2 = None
+        transforms_augmentation = transforms.Compose([transforms_preprocess])
 
     # augmentations of training set after tensor transformation
-    transforms_aug_3 = transforms.Compose([re])
+    transforms_aug_2 = transforms.Compose([re])
 
-    transforms_augmentation = transforms.Compose([transforms_aug_2, transforms_preprocess, transforms_aug_3])
+    transforms_augmentation = transforms.Compose([transforms_augmentation, transforms_aug_2])
     transforms_basic = transforms.Compose([transforms_aug_1])
 
     return transforms_preprocess, transforms_augmentation, transforms_basic

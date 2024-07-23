@@ -4,7 +4,6 @@ import numpy as np
 from tqdm import tqdm
 import torch.cuda.amp
 import torch.optim as optim
-from torch.utils.data import DataLoader
 from torch.optim.swa_utils import AveragedModel, SWALR
 import torchvision.models as torchmodels
 
@@ -104,6 +103,8 @@ parser.add_argument('--noise_sparsity', default=0.0, type=float,
                     help='probability of not applying a calculated noise value to a dimension of an image')
 parser.add_argument('--noise_patch_lower_scale', default=1.0, type=float, help='lower bound of the scale to choose the '
                     'area ratio of the image from, which gets perturbed by random noise')
+parser.add_argument('--generated_ratio', default=0.0, type=float, help='ratio of synthetically generated images mixed '
+                    'into every training batch')
 
 args = parser.parse_args()
 configname = (f'experiments.configs.config{args.experiment}')
@@ -209,12 +210,10 @@ if __name__ == '__main__':
 
     trainset, validset, testset, num_classes = data.load_data(args.dataset, args.validontest, transforms_preprocess,
                         transforms_augmentation, transforms_basic=transforms_basic, transforms_generated=transforms_augmentation,
-                        run=args.run, robust_samples=criterion.robust_samples, add_generated_ratio=args.add_generated_ratio)
+                        run=args.run, robust_samples=criterion.robust_samples, generated_ratio=args.generated_ratio)
     testsets_c = data.load_data_c(args.dataset, testset, args.resize, transforms_preprocess, args.validonc, subsetsize=200)
-
     trainloader, validationloader = data.load_loader(trainset, validset, args.batchsize, args.number_workers,
-                                                     args.add_generated_ratio, total_samples=trainset.original_length)
-
+                                                     args.generated_ratio, total_samples=trainset.original_length)
     # Construct model
     print(f'\nBuilding {args.modeltype} model with {args.modelparams} | Augmentation strategy: {args.aug_strat_check}'
           f' | Loss Function: {args.loss}')
@@ -246,7 +245,7 @@ if __name__ == '__main__':
                                                     swa_model_path='experiments/trained_models/swa_checkpoint.pt',
                                                     best_model_path = 'experiments/trained_models/best_checkpoint.pt')
     Traintracker = utils.TrainTracking(args.dataset, args.modeltype, args.lrschedule, args.experiment, args.run,
-                            args.combine_train_corruptions, args.validonc, args.validonadv, args.swa, train_corruptions)
+                            args.validonc, args.validonadv, args.swa)
 
     # Calculate steps and epochs
     total_steps = utils.calculate_steps(args.dataset, args.batchsize, args.epochs, args.warmupepochs, args.validontest)

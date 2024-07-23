@@ -15,7 +15,7 @@ if __name__ == '__main__':
         print('Starting experiment #',experiment, 'on', config.dataset, 'dataset')
         runs = 1
 
-        if experiment == 0:
+        if experiment in []:
             resume = True
         else:
             resume = False
@@ -31,7 +31,7 @@ if __name__ == '__main__':
                        "--robust_loss={} --robust_lossparams=\"{}\" --mixup=\"{}\" --cutmix=\"{}\" --manifold=\"{}\" " \
                        "--combine_train_corruptions={} --concurrent_combinations={} --batchsize={} --number_workers={} " \
                        "--RandomEraseProbability={} --warmupepochs={} --normalize={} --pixel_factor={} --minibatchsize={} " \
-                       "--validonc={} --validonadv={} --swa={} --noise_sparsity={} --noise_patch_lower_scale={}"\
+                       "--validonc={} --validonadv={} --swa={} --noise_sparsity={} --noise_patch_lower_scale={} --generated_ratio={} "\
                     .format(resume, run, experiment, config.epochs, config.learningrate, config.dataset, config.validontest,
                             config.lrschedule, config.lrparams, config.earlystop, config.earlystopPatience,
                             config.optimizer, config.optimizerparams, config.modeltype, config.modelparams, config.resize,
@@ -40,8 +40,9 @@ if __name__ == '__main__':
                             config.cutmix, config.manifold, config.combine_train_corruptions, config.concurrent_combinations,
                             config.batchsize, config.number_workers, config.RandomEraseProbability,
                             config.warmupepochs, config.normalize, config.pixel_factor, config.minibatchsize,
-                            config.validonc, config.validonadv, config.swa, config.noise_sparsity, config.noise_patch_lower_scale)
-                if experiment == (2):
+                            config.validonc, config.validonadv, config.swa, config.noise_sparsity, config.noise_patch_lower_scale,
+                            config.generated_ratio)
+                if experiment in []:
                     print('skip')
                 else:
                     os.system(cmd0)
@@ -56,7 +57,8 @@ if __name__ == '__main__':
                            "--robust_lossparams=\"{}\" --mixup=\"{}\" --cutmix=\"{}\" --manifold=\"{}\" " \
                            "--combine_train_corruptions={} --concurrent_combinations={} --batchsize={} --number_workers={} " \
                            "--RandomEraseProbability={} --warmupepochs={} --normalize={} --pixel_factor={} " \
-                           "--minibatchsize={} --validonc={} --validonadv={} --swa={} --noise_sparsity={} --noise_patch_lower_scale={}"\
+                           "--minibatchsize={} --validonc={} --validonadv={} --swa={} --noise_sparsity={} --noise_patch_lower_scale={}" \
+                           "--generated_ratio={} "\
                         .format(resume, train_corruption, run, experiment, config.epochs, config.learningrate,
                                 config.dataset, config.validontest, config.lrschedule, config.lrparams, config.earlystop,
                                 config.earlystopPatience, config.optimizer, config.optimizerparams, config.modeltype,
@@ -67,12 +69,11 @@ if __name__ == '__main__':
                                 config.concurrent_combinations, config.batchsize, config.number_workers,
                                 config.RandomEraseProbability, config.warmupepochs, config.normalize, config.pixel_factor,
                                 config.minibatchsize, config.validonc, config.validonadv, config.swa, config.noise_sparsity,
-                                config.noise_patch_lower_scale)
-                    if experiment == (9):
+                                config.noise_patch_lower_scale, config.generated_ratio)
+                    if experiment in []:
                         print('skip')
                     else:
                         os.system(cmd0)
-
 
         # Calculate accuracy and robust accuracy, evaluating each trained network on each corruption
         print('Beginning metric evaluation')

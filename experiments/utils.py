@@ -173,8 +173,7 @@ class Checkpoint:
         }, self.final_model_path)
 
 class TrainTracking:
-    def __init__(self, dataset, modeltype, lrschedule, experiment, run, combine_train_corruptions, validonc, validonadv,
-                 swa, train_corruptions):
+    def __init__(self, dataset, modeltype, lrschedule, experiment, run, validonc, validonadv, swa):
         self.dataset = dataset
         self.modeltype = modeltype
         self.lrschedule = lrschedule
@@ -194,16 +193,19 @@ class TrainTracking:
         train_losses = learning_curve_frame.iloc[:, 1].values.tolist()
         valid_accs = learning_curve_frame.iloc[:, 2].values.tolist()
         valid_losses = learning_curve_frame.iloc[:, 3].values.tolist()
+        columns=4
 
         valid_accs_robust, valid_accs_adv, valid_accs_swa, valid_accs_robust_swa, valid_accs_adv_swa = [],[],[],[],[]
         if self.validonc == True:
-            valid_accs_robust = learning_curve_frame.iloc[:, 4].values.tolist()
+            valid_accs_robust = learning_curve_frame.iloc[:, columns].values.tolist()
+            columns = columns + 1
         if self.validonadv == True:
-            valid_accs_adv = learning_curve_frame.iloc[:, 5].values.tolist()
+            valid_accs_adv = learning_curve_frame.iloc[:, columns].values.tolist()
+            columns = columns + 1
         if self.swa == True:
-            valid_accs_swa = learning_curve_frame.iloc[:, 6].values.tolist()
-            valid_accs_robust_swa = learning_curve_frame.iloc[:, 7].values.tolist()
-            valid_accs_adv_swa = learning_curve_frame.iloc[:, 8].values.tolist()
+            valid_accs_swa = learning_curve_frame.iloc[:, columns].values.tolist()
+            valid_accs_robust_swa = learning_curve_frame.iloc[:, columns+1].values.tolist()
+            valid_accs_adv_swa = learning_curve_frame.iloc[:, columns+2].values.tolist()
 
         self.train_accs = train_accs
         self.train_losses = train_losses
@@ -232,14 +234,17 @@ class TrainTracking:
 
         learning_curve_frame = pd.DataFrame({"train_accuracy": self.train_accs, "train_loss": self.train_losses,
                                                  "valid_accuracy": self.valid_accs, "valid_loss": self.valid_losses})
+        columns = 4
         if self.validonc == True:
-            learning_curve_frame.insert(4, "valid_accuracy_robust", self.valid_accs_robust)
+            learning_curve_frame.insert(columns, "valid_accuracy_robust", self.valid_accs_robust)
+            columns = columns + 1
         if self.validonadv == True:
-            learning_curve_frame.insert(5, "valid_accuracy_adversarial", self.valid_accs_adv)
+            learning_curve_frame.insert(columns, "valid_accuracy_adversarial", self.valid_accs_adv)
+            columns = columns + 1
         if self.swa == True:
-            learning_curve_frame.insert(6, "valid_accuracy_swa", self.valid_accs_swa)
-            learning_curve_frame.insert(7, "valid_accuracy_robust_swa", self.valid_accs_robust_swa)
-            learning_curve_frame.insert(8, "valid_accuracy_adversarial_swa", self.valid_accs_adv_swa)
+            learning_curve_frame.insert(columns, "valid_accuracy_swa", self.valid_accs_swa)
+            learning_curve_frame.insert(columns+1, "valid_accuracy_robust_swa", self.valid_accs_robust_swa)
+            learning_curve_frame.insert(columns+2, "valid_accuracy_adversarial_swa", self.valid_accs_adv_swa)
         learning_curve_frame.to_csv(f'./results/{self.dataset}/{self.modeltype}/config{self.experiment}_'
                                     f'learning_curve_run_{self.run}.csv',
                                     index=False, header=True, sep=';', float_format='%1.4f', decimal=',')

@@ -6,7 +6,6 @@ import torch
 device = "cuda" if torch.cuda.is_available() else "cpu"
 import numpy as np
 from torch.utils.data import DataLoader
-from cleverhans.torch.attacks.projected_gradient_descent import projected_gradient_descent
 from autoattack import AutoAttack
 from art.estimators.classification.pytorch import PyTorchClassifier
 from art.attacks.evasion import (ProjectedGradientDescentPyTorch,

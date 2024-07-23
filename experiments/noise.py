@@ -84,7 +84,7 @@ def _noising(x, add_noise_level=0.0, mult_noise_level=0.0, sparse_level=0.0, l0_
 
 def noise_up(x, robust_samples=0, add_noise_level=0.0, mult_noise_level=0.0, sparse_level=0.0, l0_level=0.0):
     # based on https://github.com/erichson/NoisyMix
-    q = np.int(x.shape[0] / (robust_samples+1))
+    q = int(x.shape[0] / (robust_samples+1))
     sparsity = random.random() * sparse_level
     for i in range(robust_samples+1):
         x[q*i:q*(i+1)] = _noising(x[q*i:q*(i+1)], add_noise_level=add_noise_level * (i+1), mult_noise_level=mult_noise_level,
@@ -123,7 +123,7 @@ def do_noisy_mixup(x, y, num_classes, jsd=0, alpha=0.0, add_noise_level=0.0, mul
         x = _noise(x, add_noise_level=add_noise_level, mult_noise_level=mult_noise_level, sparse_level=sparse_level)
     else:
         kk = 0
-        q = np.int(x.shape[0] / 3)
+        q = int(x.shape[0] / 3)
         index = torch.randperm(q).cuda()
 
         for i in range(1, 4):

@@ -91,8 +91,8 @@ if __name__ == '__main__':
                                 test_corruptions, args.adv_distance_params)
 
     # Load data
-    test_transforms,_ = data.create_transforms(args.dataset, aug_strat_check=False, train_aug_strat='None', resize=args.resize)
-    _, _, testset, num_classes = data.load_data(test_transforms, args.dataset, validontest=True)
+    test_transforms,_,_ = data.create_transforms(args.dataset, aug_strat_check=False, train_aug_strat='None', resize=args.resize)
+    _, _, testset, num_classes = data.load_data(dataset=args.dataset, validontest=True, transforms_preprocess=test_transforms)
     testloader = DataLoader(testset, batch_size=args.batchsize, shuffle=False, pin_memory=True,
                             num_workers=args.number_workers)
 
