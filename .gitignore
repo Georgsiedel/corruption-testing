@@ -4,6 +4,8 @@ experiments/__pycache__
 experiments/models/__pycache__
 experiments/data/*
 !experiments/data/c-labels.txt
+!experiments/data/c-bar-labels-IN.txt
+!experiments/data/c-bar-labels-cifar.txt
 !experiments/data/README.md
 experiments/configs/__pycache__
 experiments/models/__pycache__

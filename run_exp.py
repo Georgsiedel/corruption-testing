@@ -42,10 +42,7 @@ if __name__ == '__main__':
                             config.warmupepochs, config.normalize, config.pixel_factor, config.minibatchsize,
                             config.validonc, config.validonadv, config.swa, config.noise_sparsity, config.noise_patch_lower_scale,
                             config.generated_ratio)
-                if experiment in []:
-                    print('skip')
-                else:
-                    os.system(cmd0)
+                os.system(cmd0)
             else:
                 for id, (train_corruption) in enumerate(config.train_corruptions):
                     print("Separate corruption training:", train_corruption)
@@ -70,10 +67,7 @@ if __name__ == '__main__':
                                 config.RandomEraseProbability, config.warmupepochs, config.normalize, config.pixel_factor,
                                 config.minibatchsize, config.validonc, config.validonadv, config.swa, config.noise_sparsity,
                                 config.noise_patch_lower_scale, config.generated_ratio)
-                    if experiment in []:
-                        print('skip')
-                    else:
-                        os.system(cmd0)
+                    os.system(cmd0)
 
         # Calculate accuracy and robust accuracy, evaluating each trained network on each corruption
         print('Beginning metric evaluation')
