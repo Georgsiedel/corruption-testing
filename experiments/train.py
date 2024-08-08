@@ -170,8 +170,8 @@ def valid_epoch(pbar, net):
             with torch.cuda.amp.autocast():
 
                 if args.validonadv == True:
-                    adv_inputs, outputs = fast_gradient_validation(model_fn=model, eps=8/255, x=inputs, y=None, norm=np.inf, criterion=criterion)
-                    _, adv_predicted = model(adv_inputs).max(1)
+                    adv_inputs, outputs = fast_gradient_validation(model_fn=net, eps=8/255, x=inputs, y=None, norm=np.inf, criterion=criterion)
+                    _, adv_predicted = net(adv_inputs).max(1)
                     adv_correct += adv_predicted.eq(targets).sum().item()
                 else:
                     outputs = net(inputs)
