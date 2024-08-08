@@ -31,23 +31,16 @@ class CtModel(nn.Module):
         elif mixup_alpha > 0.0 and manifold == True: k = np.random.choice(range(3), 1)[0] #, p=[0.5, 0.25, 0.25]
         else: k = 0
 
-        original_batchsize = (out.size(0) // (robust_samples + 1))
+        #original_batchsize = (out.size(0) // (robust_samples + 1))
 
         if k == 0:  # Do input mixup if k is 0
             mixed_out, targets = mixup_process(out, targets, robust_samples, self.num_classes, mixup_alpha, mixup_p,
                                          cutmix_alpha, cutmix_p, manifold=False, inplace=True)
-            #mixed = mixed_out.clone()
-            #noisy_out = apply_noise_add_and_mult(mixed_out, noise_minibatchsize,
-            #                                        corruptions, self.normalized, self.dataset, noise_patch_lower_scale=
-            #                                                noise_patch_lower_scale, noise_sparsity=noise_sparsity)
-            #noisy_out = noise_up(mixed_out, robust_samples=robust_samples, add_noise_level=0.4, mult_noise_level=0.2,
-            #                            sparse_level=noise_sparsity, l0_level=0.2)
-            #noisy_out = torch.cat((noisy_out[:original_batchsize, :, :, :],
-            #                       apply_noise_add_and_mult(noisy_out[original_batchsize:, :, :, :], noise_minibatchsize,
-            #                                        corruptions, self.normalized, self.dataset, noise_patch_lower_scale=
-            #                                                noise_patch_lower_scale, noise_sparsity=noise_sparsity)),
-            #                       dim=0)
-            out = mixed_out
+            noisy_out = apply_noise(mixed_out, noise_minibatchsize, corruptions, concurrent_combinations,
+                                                             self.normalized, self.dataset,
+                                                             manifold=False, manifold_factor=1, noise_sparsity=noise_sparsity,
+                                                             noise_patch_lower_scale=noise_patch_lower_scale)
+            out = noisy_out
             #plot_images(noisy_out, mixed, 3)
 
         out = self.blocks[0](out)
@@ -56,8 +49,8 @@ class CtModel(nn.Module):
             out = ResidualBlock(out)
             if k == (i + 1):  # Do manifold mixup if k is greater 0
                 out, targets = mixup_process(out, targets, robust_samples, self.num_classes, mixup_alpha, mixup_p,
-                                         cutmix_alpha, cutmix_p, manifold=True, inplace=True)
+                                         cutmix_alpha, cutmix_p, manifold=True, inplace=False)
                 out = noise_up(out, robust_samples=robust_samples, add_noise_level=1.0, mult_noise_level=0.5,
-                                        sparse_level=noise_sparsity, l0_level=0.2)
+                                        sparse_level=noise_sparsity, l0_level=0.1)
         return out, targets
 

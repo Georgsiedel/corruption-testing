@@ -213,10 +213,10 @@ if __name__ == '__main__':
                         run=args.run, robust_samples=criterion.robust_samples, generated_ratio=args.generated_ratio)
     testsets_c = data.load_data_c(args.dataset, testset, args.resize, transforms_preprocess, args.validonc, subsetsize=200)
     trainloader, validationloader = data.load_loader(trainset, validset, args.batchsize, args.number_workers,
-                                                     args.generated_ratio, total_samples=trainset.original_length)
+                                                     args.generated_ratio)
     # Construct model
     print(f'\nBuilding {args.modeltype} model with {args.modelparams} | Augmentation strategy: {args.aug_strat_check}'
-          f' | Loss Function: {args.loss}')
+          f' | Loss Function: {args.loss}, Stability Loss: {args.robust_loss}, Trades Loss: {args.trades_loss}')
     if args.dataset in ('CIFAR10', 'CIFAR100', 'TinyImageNet'):
         model_class = getattr(low_dim_models, args.modeltype)
         model = model_class(dataset=args.dataset, normalized =args.normalize, num_classes=num_classes,
@@ -234,16 +234,17 @@ if __name__ == '__main__':
     if args.warmupepochs > 0:
         warmupscheduler = optim.lr_scheduler.LinearLR(optimizer, start_factor=0.1, end_factor=1.0, total_iters=args.warmupepochs)
         scheduler = optim.lr_scheduler.SequentialLR(optimizer, schedulers=[warmupscheduler, scheduler], milestones=[args.warmupepochs])
+
     if args.swa == True:
-        swa_model = AveragedModel(model)
+        swa_model = AveragedModel(model.module)
         swa_start = args.epochs * 0.85
-        swa_scheduler = SWALR(optimizer, anneal_strategy="linear", anneal_epochs=5, swa_lr=args.learningrate / 3)
+        swa_scheduler = SWALR(optimizer, anneal_strategy="linear", anneal_epochs=5, swa_lr=args.learningrate / 5)
+    else:
+        swa_model, swa_scheduler = None, None
     Scaler = torch.cuda.amp.GradScaler()
     Checkpointer = utils.Checkpoint(args.combine_train_corruptions, args.dataset, args.modeltype, args.experiment,
                                     train_corruptions, args.run, earlystopping=args.earlystop, patience=args.earlystopPatience,
-                                    verbose=False,  model_path='experiments/trained_models/checkpoint.pt',
-                                                    swa_model_path='experiments/trained_models/swa_checkpoint.pt',
-                                                    best_model_path = 'experiments/trained_models/best_checkpoint.pt')
+                                    verbose=False,  checkpoint_path='experiments/trained_models/checkpoint.pt')
     Traintracker = utils.TrainTracking(args.dataset, args.modeltype, args.lrschedule, args.experiment, args.run,
                             args.validonc, args.validonadv, args.swa)
 
@@ -253,10 +254,9 @@ if __name__ == '__main__':
 
     # Resume from checkpoint
     if args.resume == True:
-        start_epoch, model, optimizer, scheduler = Checkpointer.load_model(model, optimizer, scheduler, 'checkpoint')
+        start_epoch, model, swa_model, optimizer, scheduler, swa_scheduler = Checkpointer.load_model(model, swa_model,
+                                                                    optimizer, scheduler, swa_scheduler, 'standard')
         Traintracker.load_learning_curves()
-        if args.swa == True:
-            start_epoch, swa_model, optimizer, swa_scheduler = Checkpointer.load_model(swa_model, optimizer, scheduler, 'swa_checkpoint')
         print('\nResuming from checkpoint at epoch', start_epoch)
 
     # Training loop
@@ -268,7 +268,7 @@ if __name__ == '__main__':
                 valid_acc, valid_loss, valid_acc_robust, valid_acc_adv = valid_epoch(pbar, model)
 
                 if args.swa == True and epoch > swa_start:
-                    swa_model.update_parameters(model)
+                    swa_model.update_parameters(model.module)
                     swa_scheduler.step()
                     valid_acc_swa, valid_loss_swa, valid_acc_robust_swa, valid_acc_adv_swa = valid_epoch(pbar, swa_model)
                 else:
@@ -280,9 +280,7 @@ if __name__ == '__main__':
 
                 # Check for best model, save model(s) and learning curve and check for earlystopping conditions
                 Checkpointer.earlystopping(valid_acc)
-                Checkpointer.save_checkpoint(model, optimizer, scheduler, epoch)
-                if args.swa == True:
-                    Checkpointer.save_swa_checkpoint(swa_model, optimizer, swa_scheduler, epoch)
+                Checkpointer.save_checkpoint(model, swa_model, optimizer, scheduler, swa_scheduler, epoch)
                 Traintracker.save_metrics(train_acc, valid_acc, valid_acc_robust, valid_acc_adv, valid_acc_swa,
                              valid_acc_robust_swa, valid_acc_adv_swa, train_loss, valid_loss)
                 Traintracker.save_learning_curves()
@@ -292,9 +290,12 @@ if __name__ == '__main__':
 
     # Save final model
     if args.swa == True:
-        torch.optim.swa_utils.update_bn(trainloader, swa_model)
+        if criterion.robust_samples >= 1:
+            SWA_Loader = data.SwaLoader(trainloader, args.batchsize, criterion.robust_samples)
+            trainloader = SWA_Loader.get_swa_dataloader()
+        torch.optim.swa_utils.update_bn(trainloader, swa_model, device)
         model = swa_model
-        valid_acc_swa, valid_loss_swa, acc_c_swa = valid_epoch(pbar, swa_model)
+
     Checkpointer.save_final_model(model, optimizer, scheduler, end_epoch)
     Traintracker.print_results()
     Traintracker.save_config()

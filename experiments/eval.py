@@ -111,7 +111,7 @@ if __name__ == '__main__':
                 model = model_class(num_classes=num_classes, **args.modelparams)
             model = torch.nn.DataParallel(model).to(device)
             cudnn.benchmark = True
-            model.load_state_dict(torch.load(Testtracker.filename)["model_state_dict"], strict=False)
+            model.load_state_dict(torch.load(Testtracker.filename)['model_state_dict'], strict=False)
             model.eval()
 
             # Clean Test Accuracy
@@ -136,7 +136,7 @@ if __name__ == '__main__':
 
             # Robust Accuracy on p-norm noise - either combined or separate noise types
             accs = eval_corruptions.select_p_corruptions(testloader, model, test_corruptions, args.dataset, args.combine_test_corruptions)
-            Testtracker.track_results([accs])
+            Testtracker.track_results(accs)
 
             print(Testtracker.accs)
 

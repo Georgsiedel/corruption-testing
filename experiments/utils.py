@@ -69,9 +69,7 @@ class Checkpoint:
 
     def __init__(self, combine_train_corruptions, dataset, modeltype, experiment, train_corruption, run,
                  earlystopping=False, patience=7, verbose=False, delta=0, trace_func=print,
-                 model_path='experiments/trained_models/checkpoint.pt',
-                 swa_model_path='experiments/trained_models/swa_checkpoint.pt',
-                 best_model_path='experiments/trained_models/best_checkpoint.pt'
+                 checkpoint_path='experiments/trained_models/checkpoint.pt',
                  ):
         """
         Args:
@@ -94,9 +92,7 @@ class Checkpoint:
         self.delta = delta
         self.trace_func = trace_func
         self.early_stopping = earlystopping
-        self.model_path = model_path
-        self.swa_model_path = swa_model_path
-        self.best_model_path = best_model_path
+        self.checkpoint_path = checkpoint_path
         if combine_train_corruptions:
             self.final_model_path = f'./experiments/trained_models/{dataset}/{modeltype}/config{experiment}_run_{run}.pth'
         else:
@@ -123,30 +119,24 @@ class Checkpoint:
             self.counter = 0
             self.best_model = True
 
-    def load_model(self, model, optimizer, scheduler, path='checkpoint'):
-        if path == 'checkpoint':
-            checkpoint = torch.load(self.model_path)
-        elif path == 'best_checkpoint':
-            checkpoint = torch.load(self.best_model_path)
-        elif path == 'swa_checkpoint':
-            checkpoint = torch.load(self.swa_model_path)
+    def load_model(self, model, swa_model, optimizer, scheduler, swa_scheduler, type='standard'):
+        checkpoint = torch.load(self.checkpoint_path)
+        if type == 'standard':
+            model.module.load_state_dict(checkpoint['model_state_dict'], strict=True)
+            start_epoch = checkpoint['epoch'] + 1
+        elif type == 'best':
+            model.module.load_state_dict(checkpoint['best_model_state_dict'], strict=True)
+            start_epoch = checkpoint['best_epoch'] + 1
         else:
-            print('only swa_checkpoint, best_checkpoint or checkpoint can be loaded')
+            print('only best_checkpoint or checkpoint can be loaded')
 
-        model.load_state_dict(checkpoint['model_state_dict'])
+        swa_model.load_state_dict(checkpoint['swa_model_state_dict'], strict=True)
+        swa_scheduler.load_state_dict(checkpoint['swa_scheduler_state_dict'])
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
-        start_epoch = checkpoint['epoch'] + 1
-        return start_epoch, model, optimizer, scheduler
+        return start_epoch, model, swa_model, optimizer, scheduler, swa_scheduler
 
-    def save_checkpoint(self, model, optimizer, scheduler, epoch):
-
-        torch.save({
-            'epoch': epoch,
-            'model_state_dict': model.state_dict(),
-            'optimizer_state_dict': optimizer.state_dict(),
-            'scheduler_state_dict': scheduler.state_dict(),
-        }, self.model_path)
+    def save_checkpoint(self, model, swa_model, optimizer, scheduler, swa_scheduler, epoch):
 
         if self.best_model == True:
             torch.save({
@@ -154,15 +144,22 @@ class Checkpoint:
                 'model_state_dict': model.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
                 'scheduler_state_dict': scheduler.state_dict(),
-            }, self.best_model_path)
+                'swa_model_state_dict': swa_model.state_dict(),
+                'swa_scheduler_state_dict': swa_scheduler.state_dict(),
+                'best_epoch': epoch,
+                'best_model_state_dict': model.module.state_dict(),
+            }, self.checkpoint_path)
 
-    def save_swa_checkpoint(self, swa_model, optimizer, swa_scheduler, epoch):
-        torch.save({
-            'epoch': epoch,
-            'model_state_dict': swa_model.state_dict(),
-            'optimizer_state_dict': optimizer.state_dict(),
-            'scheduler_state_dict': swa_scheduler.state_dict(),
-        }, self.swa_model_path)
+        else:
+            checkpoint = torch.load(self.checkpoint_path)
+            checkpoint['epoch'] = epoch
+            checkpoint['model_state_dict'] = model.module.state_dict()
+            checkpoint['optimizer_state_dict'] = optimizer.state_dict()
+            checkpoint['scheduler_state_dict'] = scheduler.state_dict()
+            checkpoint['swa_model_state_dict'] = swa_model.state_dict()
+            checkpoint['swa_scheduler_state_dict'] = swa_scheduler.state_dict()
+
+            torch.save(checkpoint, self.checkpoint_path)
 
     def save_final_model(self, model, optimizer, scheduler, epoch):
         torch.save({
@@ -204,8 +201,11 @@ class TrainTracking:
             columns = columns + 1
         if self.swa == True:
             valid_accs_swa = learning_curve_frame.iloc[:, columns].values.tolist()
-            valid_accs_robust_swa = learning_curve_frame.iloc[:, columns+1].values.tolist()
-            valid_accs_adv_swa = learning_curve_frame.iloc[:, columns+2].values.tolist()
+            if self.validonc == True:
+                valid_accs_robust_swa = learning_curve_frame.iloc[:, columns+1].values.tolist()
+                columns = columns + 1
+            if self.validonadv == True:
+                valid_accs_adv_swa = learning_curve_frame.iloc[:, columns+1].values.tolist()
 
         self.train_accs = train_accs
         self.train_losses = train_losses
@@ -243,8 +243,11 @@ class TrainTracking:
             columns = columns + 1
         if self.swa == True:
             learning_curve_frame.insert(columns, "valid_accuracy_swa", self.valid_accs_swa)
-            learning_curve_frame.insert(columns+1, "valid_accuracy_robust_swa", self.valid_accs_robust_swa)
-            learning_curve_frame.insert(columns+2, "valid_accuracy_adversarial_swa", self.valid_accs_adv_swa)
+            if self.validonc == True:
+                learning_curve_frame.insert(columns+1, "valid_accuracy_robust_swa", self.valid_accs_robust_swa)
+                columns = columns + 1
+            if self.validonadv == True:
+                learning_curve_frame.insert(columns+1, "valid_accuracy_adversarial_swa", self.valid_accs_adv_swa)
         learning_curve_frame.to_csv(f'./results/{self.dataset}/{self.modeltype}/config{self.experiment}_'
                                     f'learning_curve_run_{self.run}.csv',
                                     index=False, header=True, sep=';', float_format='%1.4f', decimal=',')

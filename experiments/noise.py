@@ -193,7 +193,6 @@ def apply_noise(batch, minibatchsize, corruptions, concurrent_combinations, norm
 
     if corruptions is None:
         return batch
-
     #Calculate the mean values for each channel across all images
     mean, std = normalization_values(batch, dataset, normalized, manifold, manifold_factor)
 

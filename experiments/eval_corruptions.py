@@ -4,19 +4,20 @@ from torch.utils.data import DataLoader
 from torchmetrics.classification import MulticlassCalibrationError
 device = "cuda" if torch.cuda.is_available() else "cpu"
 from experiments.noise import apply_noise
+from experiments.utils import plot_images
 
 def select_p_corruptions(testloader, model, test_corruptions, dataset, combine_test_corruptions):
     if combine_test_corruptions:  # combined p-norm corruption robust accuracy
-        accs = compute_p_corruptions(testloader, model, test_corruptions, dataset)
+        accs = [compute_p_corruptions(testloader, model, test_corruptions, dataset)]
         print(accs, "% Accuracy on combined Lp-norm Test Noise")
 
     else:  # separate p-norm corruption robust accuracy
         accs = []
         for _, (test_corruption) in enumerate(test_corruptions):
-            acc = compute_p_corruptions(testloader, model, test_corruptions, dataset)
+            acc = compute_p_corruptions(testloader, model, test_corruption, dataset)
             print(acc, "% Accuracy on random test corruptions of type:", test_corruption['noise_type'],
                   test_corruption['epsilon'])
-            accs = accs + acc
+            accs = accs + [acc]
     return accs
 
 def compute_p_corruptions(testloader, model, test_corruptions, dataset):
@@ -24,9 +25,9 @@ def compute_p_corruptions(testloader, model, test_corruptions, dataset):
         model.eval()
         correct, total = 0, 0
         for batch_idx, (inputs, targets) in enumerate(testloader):
-
             inputs, targets = inputs.to(device, dtype=torch.float), targets.to(device)
-            inputs_pert = apply_noise(inputs, 1, test_corruptions, 1, False, dataset)
+            inputs_pert = apply_noise(inputs, 8, test_corruptions, 1, False, dataset)
+            #plot_images(inputs_pert, inputs_pert, 3)
 
             with torch.cuda.amp.autocast():
                 targets_pred = model(inputs_pert)

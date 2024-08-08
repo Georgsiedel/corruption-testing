@@ -13,6 +13,28 @@ from torch.utils.data import Subset, Dataset, ConcatDataset, RandomSampler, Batc
 import numpy as np
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
+class SwaLoader():
+    def __init__(self, trainloader, batchsize, robust_samples):
+        self.trainloader = trainloader
+        self.batchsize = batchsize
+        self.robust_samples = robust_samples
+
+    def concatenate_collate_fn(self, batch):
+        concatenated_batch = []
+        for images, label in batch:
+            concatenated_batch.extend(images)
+        return torch.stack(concatenated_batch)
+
+    def get_swa_dataloader(self):
+        # Create a new DataLoader with the custom collate function
+        swa_dataloader = DataLoader(
+            dataset=self.trainloader.dataset,
+            batch_size=self.batchsize,
+            num_workers=self.trainloader.num_workers,
+            collate_fn=self.concatenate_collate_fn
+        )
+        return swa_dataloader
+
 class CustomDataset(Dataset):
     def __init__(self, np_images, original_dataset, resize):
         # Load images
@@ -34,42 +56,52 @@ class CustomDataset(Dataset):
         return image, label
 
 class CombinedDataset(Dataset):
-    def __init__(self, original_dataset, generated_dataset, transform=None):
-        self.original_dataset = original_dataset  # Assuming cifar_dataset is preloaded with or without transforms
+    def __init__(self, original_dataset, generated_dataset, target_size, generated_ratio=0.0, transform=None):
+
+        self.generated_ratio = generated_ratio
         self.transform = transform  # Save the transform passed to the constructor
-
         self.original_length = len(original_dataset)
+        self.target_size = target_size
 
-        if generated_dataset == None:
-            original_images, original_labels = zip(*original_dataset)
+        if generated_dataset == None or generated_ratio == 0.0:
+            self.images, self.labels = zip(*original_dataset)
+            if isinstance(self.images[0], torch.Tensor):
+                self.images = TF.to_pil_image(self.images)
+            self.sources = [True] * self.original_length
+        else:
+            self.original_generated_length = len(generated_dataset['image'])
+
+            self.num_generated = int(self.target_size * self.generated_ratio)
+            self.num_original = self.target_size - self.num_generated
+
+            # Create a single permutation for the whole epoch
+            original_perm = torch.randperm(self.original_length)
+            generated_perm = torch.randperm(self.original_generated_length)
+
+            original_indices = original_perm[0:self.num_original]
+            generated_indices = generated_perm[0:self.num_generated]
+            generated_images = list(map(Image.fromarray, generated_dataset['image'][generated_indices]))
+            generated_labels = generated_dataset['label'][generated_indices]
+
+            original_subset = Subset(original_dataset, original_indices)
+            original_images, original_labels = zip(*original_subset)
             if isinstance(original_images[0], torch.Tensor):
                 original_images = TF.to_pil_image(original_images)
-            self.images = original_images
-            self.labels = original_labels
-            self.sources = [True] * self.original_length
-
-        else:
-            generated_images = list(map(Image.fromarray, generated_dataset['image']))
-            generated_labels = generated_dataset['label']
-            self.generated_length = len(generated_images)
 
             # Prepare lists for combined data
-            self.images = [None] * (self.original_length + self.generated_length)
-            self.labels = [None] * (self.original_length + self.generated_length)
-            self.sources = [None] * (self.original_length + self.generated_length)
+            self.images = [None] * self.target_size
+            self.labels = [None] * self.target_size
+            self.sources = [None] * self.target_size
 
             # Transform and append original data
-            original_images, original_labels = zip(*original_dataset)
-            if isinstance(original_images[0], torch.Tensor):
-                original_images = TF.to_pil_image(original_images)
-            self.images[:self.original_length] = original_images
-            self.labels[:self.original_length] = original_labels
-            self.sources[:self.original_length] = [True] * self.original_length
+            self.images[:self.num_original] = original_images
+            self.labels[:self.num_original] = original_labels
+            self.sources[:self.num_original] = [True] * self.num_original
 
             # Append NPZ data
-            self.images[self.original_length:self.original_length + self.generated_length] = generated_images
-            self.labels[self.original_length:self.original_length + self.generated_length] = generated_labels
-            self.sources[self.original_length:self.original_length + self.generated_length] = [False] * self.generated_length
+            self.images[self.num_original:self.target_size] = generated_images
+            self.labels[self.num_original:self.target_size] = generated_labels
+            self.sources[self.num_original:self.target_size] = [False] * self.num_generated
 
     def __len__(self):
         return len(self.labels)
@@ -86,34 +118,37 @@ class CombinedDataset(Dataset):
         return image, label, source
 
 class BalancedRatioSampler(Sampler):
-    def __init__(self, dataset, original_size, generated_size, generated_ratio, batch_size, total_samples):
+    def __init__(self, dataset, generated_ratio, batch_size):
+        super(BalancedRatioSampler, self).__init__()
         self.dataset = dataset
         self.batch_size = batch_size
         self.generated_ratio = generated_ratio
-        self.total_samples = total_samples
-        self.original_size = original_size
-        self.generated_size = generated_size
+        self.size = len(dataset)
+
+        self.num_generated = int(self.size * self.generated_ratio)
+        self.num_original = self.size - self.num_generated
+        self.num_generated_batch = int(self.batch_size * self.generated_ratio)
+        self.num_original_batch = self.batch_size - self.num_generated_batch
 
     def __iter__(self):
+        # Create a single permutation for the whole epoch.
+        # generated permutation requires generated images appended to the back of the dataset!
+        original_perm = torch.randperm(self.num_original)
+        generated_perm = torch.randperm(self.num_generated) + self.num_original
 
-        num_generated = int(self.batch_size * self.generated_ratio)
-        num_original = self.batch_size - num_generated
+        generated_residual_batch = self.num_generated_batch
+        original_residual_batch = self.num_original_batch
 
-        # Create a single permutation for the whole epoch
-        original_perm = torch.randperm(self.original_size)
-        generated_perm = torch.randperm(self.generated_size)
-
-        batch_starts = range(0, self.total_samples, self.batch_size)  # Start points for each batch
-        for start in batch_starts:
+        batch_starts = range(0, self.size, self.batch_size)  # Start points for each batch
+        for i, start in enumerate(batch_starts):
             # Calculate end to avoid going out of bounds
-            togo = self.total_samples - start
+            togo = self.size - start
             if togo < self.batch_size:
-                num_generated = togo * self.generated_ratio
-                num_original = togo - num_generated
-
+                generated_residual_batch = int(togo * self.generated_ratio)
+                original_residual_batch = togo - generated_residual_batch
             # Slicing the permutation to get batch indices
-            original_indices = original_perm[start:start + num_original]
-            generated_indices = generated_perm[start:start + num_generated] + self.original_size
+            original_indices = original_perm[i * self.num_original_batch:i * self.num_original_batch + original_residual_batch]
+            generated_indices = generated_perm[i * self.num_generated_batch:i * self.num_generated_batch + generated_residual_batch]
 
             # Combine
             batch_indices = torch.cat((original_indices, generated_indices))
@@ -121,7 +156,7 @@ class BalancedRatioSampler(Sampler):
             yield batch_indices.tolist()
 
     def __len__(self):
-        return (self.total_samples + self.batch_size - 1) // self.batch_size
+        return (self.size + self.batch_size - 1) // self.batch_size
 
 class AugmentedDataset(torch.utils.data.Dataset):
   """Dataset wrapper to perform augmentations and allow robust loss functions."""
@@ -186,9 +221,11 @@ def load_data(dataset, validontest, transforms_preprocess, transforms_augmentati
                 print('Dataset not loadable')
 
         generated_dataset = np.load(f'./experiments/data/{dataset}-add-1m-dm.npz') if generated_ratio > 0.0 else None
-        trainset = CombinedDataset(base_trainset, generated_dataset, transform=transforms_basic)
+        trainset = CombinedDataset(base_trainset, generated_dataset, target_size=len(base_trainset),
+                                   generated_ratio=generated_ratio, transform=transforms_basic)
         trainset = AugmentedDataset(trainset, transforms_preprocess, transforms_augmentation, transforms_generated,
                                     robust_samples)
+
     else:
         trainset = None
         validset = None
@@ -255,15 +292,14 @@ def load_data_c(dataset, testset, resize, test_transforms, subset, subsetsize):
 
     return c_datasets_dict
 
-def load_loader(trainset, validset, batchsize, number_workers, generated_ratio=0.0, total_samples=50000):
+def load_loader(trainset, validset, batchsize, number_workers, generated_ratio=0.0):
     if generated_ratio > 0.0:
-        CustomSampler = BalancedRatioSampler(trainset, original_size=trainset.original_length,
-                                             generated_size=trainset.generated_length, generated_ratio=generated_ratio,
-                                             batch_size=batchsize, total_samples=total_samples)
+        CustomSampler = BalancedRatioSampler(trainset, generated_ratio=generated_ratio,
+                                             batch_size=batchsize)
     else:
         CustomSampler = BatchSampler(RandomSampler(trainset), batch_size=batchsize, drop_last=False)
-    trainloader = DataLoader(trainset, batch_sampler=CustomSampler, pin_memory=True, num_workers=number_workers)
-    validationloader = DataLoader(validset, batch_size=batchsize, pin_memory=True, num_workers=number_workers)
+    trainloader = DataLoader(trainset, batch_sampler=CustomSampler, pin_memory=False, num_workers=number_workers)
+    validationloader = DataLoader(validset, batch_size=batchsize, pin_memory=False, num_workers=number_workers)
 
     return trainloader, validationloader
 
