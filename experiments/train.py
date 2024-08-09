@@ -97,8 +97,9 @@ parser.add_argument('--validonc', type=utils.str2bool, nargs='?', const=False, d
                     help='Whether to do a validation on a subset of c-data every epoch')
 parser.add_argument('--validonadv', type=utils.str2bool, nargs='?', const=False, default=False,
                     help='Whether to do a validation with an FGSM adversarial attack every epoch')
-parser.add_argument('--swa', type=utils.str2bool, nargs='?', const=False, default=False,
-                    help='Whether to use stochastic weight averaging over the last epochs')
+parser.add_argument('--swa', default={'start_factor': 0.85, 'lr_factor': 0.2}, type=str, action=utils.str2dictAction,
+                    metavar='KEY=VALUE', help='start_factor defines when to start weight averaging compared to overall '
+                    'epochs. lr_factor defines which learning rate to use in the averaged area.')
 parser.add_argument('--noise_sparsity', default=0.0, type=float,
                     help='probability of not applying a calculated noise value to a dimension of an image')
 parser.add_argument('--noise_patch_lower_scale', default=1.0, type=float, help='lower bound of the scale to choose the '
@@ -235,16 +236,16 @@ if __name__ == '__main__':
         warmupscheduler = optim.lr_scheduler.LinearLR(optimizer, start_factor=0.1, end_factor=1.0, total_iters=args.warmupepochs)
         scheduler = optim.lr_scheduler.SequentialLR(optimizer, schedulers=[warmupscheduler, scheduler], milestones=[args.warmupepochs])
 
-    if args.swa == True:
+    if args.swa['apply'] == True:
         swa_model = AveragedModel(model.module)
-        swa_start = args.epochs * 0.85
-        swa_scheduler = SWALR(optimizer, anneal_strategy="linear", anneal_epochs=5, swa_lr=args.learningrate / 5)
+        swa_start = args.epochs * args.swa['start_factor']
+        swa_scheduler = SWALR(optimizer, anneal_strategy="linear", anneal_epochs=5, swa_lr=args.learningrate * args.swa['lr_factor'])
     else:
         swa_model, swa_scheduler = None, None
     Scaler = torch.cuda.amp.GradScaler()
     Checkpointer = utils.Checkpoint(args.combine_train_corruptions, args.dataset, args.modeltype, args.experiment,
                                     train_corruptions, args.run, earlystopping=args.earlystop, patience=args.earlystopPatience,
-                                    verbose=False,  checkpoint_path='experiments/trained_models/checkpoint.pt')
+                                    verbose=False,  checkpoint_path=f'experiments/trained_models/checkpoint_{args.experiment}.pt')
     Traintracker = utils.TrainTracking(args.dataset, args.modeltype, args.lrschedule, args.experiment, args.run,
                             args.validonc, args.validonadv, args.swa)
 
@@ -267,7 +268,7 @@ if __name__ == '__main__':
                 train_acc, train_loss = train_epoch(pbar)
                 valid_acc, valid_loss, valid_acc_robust, valid_acc_adv = valid_epoch(pbar, model)
 
-                if args.swa == True and epoch > swa_start:
+                if args.swa['apply'] == True and epoch > swa_start:
                     swa_model.update_parameters(model.module)
                     swa_scheduler.step()
                     valid_acc_swa, valid_loss_swa, valid_acc_robust_swa, valid_acc_adv_swa = valid_epoch(pbar, swa_model)
@@ -289,12 +290,14 @@ if __name__ == '__main__':
                     break
 
     # Save final model
-    if args.swa == True:
+    if args.swa['apply'] == True:
         if criterion.robust_samples >= 1:
             SWA_Loader = data.SwaLoader(trainloader, args.batchsize, criterion.robust_samples)
             trainloader = SWA_Loader.get_swa_dataloader()
         torch.optim.swa_utils.update_bn(trainloader, swa_model, device)
         model = swa_model
+    else:
+        model = model.module
 
     Checkpointer.save_final_model(model, optimizer, scheduler, end_epoch)
     Traintracker.print_results()

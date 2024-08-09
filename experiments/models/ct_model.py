@@ -41,7 +41,7 @@ class CtModel(nn.Module):
                                                              manifold=False, manifold_factor=1, noise_sparsity=noise_sparsity,
                                                              noise_patch_lower_scale=noise_patch_lower_scale)
             out = noisy_out
-            #plot_images(noisy_out, mixed, 3)
+            #plot_images(noisy_out, mixed_out, 3)
 
         out = self.blocks[0](out)
 

@@ -12,27 +12,28 @@ train_corruptions = np.array([
 {'noise_type': 'uniform-l0-impulse', 'epsilon': 0.2, 'sphere': False, 'distribution': 'uniform'},
 {'noise_type': 'uniform-l0-impulse', 'epsilon': 0.15, 'sphere': True, 'distribution': 'uniform'}
 ])
-noise_sparsity = 0.65
-noise_patch_lower_scale = 0.5
+noise_sparsity = 0.5
+noise_patch_lower_scale = 0.3
 combine_train_corruptions = True #augment the train dataset with all corruptions
 concurrent_combinations = 1 #only has an effect if combine_train_corruption is True
 
 batchsize = 512
 minibatchsize = 8
 dataset = 'CIFAR100' #ImageNet #CIFAR100 #CIFAR10 #TinyImageNet
+generated_ratio = 0.0
 normalize = True
 validontest = True
 validonc = True
 validonadv = True
 lrschedule = 'CosineAnnealingWarmRestarts'
 learningrate = 0.15
-epochs = 375
-lrparams = {'T_0': 25, 'T_mult': 2}
+epochs = 450
+lrparams = {'T_0': 30, 'T_mult': 2}
 warmupepochs = 0
 earlystop = False
 earlystopPatience = 15
 optimizer = 'SGD'
-optimizerparams = {'momentum': 0.9, 'weight_decay': 1e-4}
+optimizerparams = {'momentum': 0.9, 'weight_decay': 1e-4, 'nesterov': True}
 number_workers = 1
 modeltype = 'WideResNet_28_4'
 modelparams = {'dropout_rate': 0.2, 'activation_function': 'silu'}
@@ -45,11 +46,11 @@ trades_loss = False
 trades_lossparams = {'step_size': 0.003, 'epsilon': 0.031, 'perturb_steps': 10, 'beta': 5.0, 'distance': 'l_inf'}
 robust_loss = False
 robust_lossparams = {'num_splits': 3, 'alpha': 12} #jsd if 3 splits, KL divergence if 2 splits
-mixup = {'alpha': 1.0, 'p': 1.0} #default alpha 0.2 #If both mixup and cutmix are >0, mixup or cutmix are selected by 0.5 chance
-cutmix = {'alpha': 1.0, 'p': 1.0} # default alpha 1.0 #If both mixup and cutmix are >0, mixup or cutmix are selected by 0.5 chance
-manifold = {'apply': True, 'noise_factor': 3}
+mixup = {'alpha': 0.2, 'p': 0.0} #default alpha 0.2 #If both mixup and cutmix are >0, mixup or cutmix are selected by 0.5 chance
+cutmix = {'alpha': 1.0, 'p': 0.0} # default alpha 1.0 #If both mixup and cutmix are >0, mixup or cutmix are selected by 0.5 chance
+manifold = {'apply': False, 'noise_factor': 3}
 RandomEraseProbability = 0.1
-swa = False
+swa = {'apply': True, 'start_factor': 0.85, 'lr_factor': 0.2}
 
 #define train and test corruptions:
 #define noise type (first column): 'gaussian', 'uniform-l0-impulse', 'uniform-l0-salt-pepper', 'uniform-linf'. also: all positive numbers p>0 for uniform Lp possible: 'uniform-l1', 'uniform-l2', ...
@@ -109,18 +110,13 @@ test_corruptions = np.array([
 ])
 
 test_on_c = True
-combine_test_corruptions = False #augment the test dataset with all corruptions
+combine_test_corruptions = True #augment the test dataset with all corruptions
 calculate_adv_distance = False
-adv_distance_params = {'setsize': 500, 'nb_iters': 200, 'eps_iter': 0.0003, 'norm': 'inf', "epsilon": 0.1,
-                       "clever": True, "clever_batches": 500, "clever_samples": 1024}
+adv_distance_params = {'setsize': 500, 'iters_pgd': 500, 'eps_iter': [0.0003,0.005,0.2], 'iters_second_attack': 40, 'norm': ['inf', 2, 1],
+                       "clever": True, "clever_batches": [5,10,50,500], "clever_samples": [5,20,100,1024]}
 calculate_autoattack_robustness = False
 autoattack_params = {'setsize': 1000, 'epsilon': 8/255, 'norm': 'Linf'}
 
-
-if combine_train_corruptions:
-    model_count = 1
-else:
-    model_count = train_corruptions.shape[0]
 if dataset == 'CIFAR10':
     num_classes = 10
     pixel_factor = 1
@@ -132,16 +128,3 @@ elif dataset == 'ImageNet':
 elif dataset == 'TinyImageNet':
     num_classes = 200
     pixel_factor = 2
-
-
-test_count = 2
-if test_on_c:
-    test_count += 23
-if combine_test_corruptions:
-    test_count += 1
-else:
-    test_count += test_corruptions.shape[0]
-if calculate_adv_distance:
-    test_count += 4
-if calculate_autoattack_robustness:
-    test_count += 2

@@ -13,14 +13,14 @@ train_corruptions = np.array([
 {'noise_type': 'uniform-l0-impulse', 'epsilon': 0.15, 'sphere': True, 'distribution': 'uniform'}
 ])
 noise_sparsity = 0.5
-noise_patch_lower_scale = 1.0
+noise_patch_lower_scale = 0.3
 combine_train_corruptions = True #augment the train dataset with all corruptions
 concurrent_combinations = 1 #only has an effect if combine_train_corruption is True
 
 batchsize = 512
 minibatchsize = 8
 dataset = 'CIFAR100' #ImageNet #CIFAR100 #CIFAR10 #TinyImageNet
-generated_ratio = 0.5
+generated_ratio = 0.0
 normalize = True
 validontest = True
 validonc = True
@@ -46,11 +46,11 @@ trades_loss = False
 trades_lossparams = {'step_size': 0.003, 'epsilon': 0.031, 'perturb_steps': 10, 'beta': 5.0, 'distance': 'l_inf'}
 robust_loss = False
 robust_lossparams = {'num_splits': 3, 'alpha': 12} #jsd if 3 splits, KL divergence if 2 splits
-mixup = {'alpha': 0.2, 'p': 0.0} #default alpha 0.2 #If both mixup and cutmix are >0, mixup or cutmix are selected by 0.5 chance
-cutmix = {'alpha': 1.0, 'p': 0.0} # default alpha 1.0 #If both mixup and cutmix are >0, mixup or cutmix are selected by 0.5 chance
-manifold = {'apply': False, 'noise_factor': 3}
+mixup = {'alpha': 0.2, 'p': 0.5} #default alpha 0.2 #If both mixup and cutmix are >0, mixup or cutmix are selected by 0.5 chance
+cutmix = {'alpha': 1.0, 'p': 0.5} # default alpha 1.0 #If both mixup and cutmix are >0, mixup or cutmix are selected by 0.5 chance
+manifold = {'apply': True, 'noise_factor': 3}
 RandomEraseProbability = 0.1
-swa = {'apply': True, 'start_factor': 0.85, 'lr_factor': 0.2}
+swa = True
 
 #define train and test corruptions:
 #define noise type (first column): 'gaussian', 'uniform-l0-impulse', 'uniform-l0-salt-pepper', 'uniform-linf'. also: all positive numbers p>0 for uniform Lp possible: 'uniform-l1', 'uniform-l2', ...

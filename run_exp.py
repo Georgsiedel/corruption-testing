@@ -7,7 +7,7 @@ if __name__ == '__main__':
     os.environ["CUDA_LAUNCH_BLOCKING"] = "1" #prevents "CUDA error: unspecified launch failure" and is recommended for some illegal memory access errors #increases train time by ~5-15%
     #os.environ["CUDA_VISIBLE_DEVICES"] = "1" #this blocks the spawn of multiple workers
 
-    for experiment in [0]:
+    for experiment in [1,2,3,4,5,6,7,8,9,10,11]:
 
         configname = (f'experiments.configs.config{experiment}')
         config = importlib.import_module(configname)
@@ -15,7 +15,7 @@ if __name__ == '__main__':
         print('Starting experiment #',experiment, 'on', config.dataset, 'dataset')
         runs = 1
 
-        if experiment in [0]:
+        if experiment in [2]:
             resume = True
         else:
             resume = False
@@ -24,49 +24,47 @@ if __name__ == '__main__':
             print("Training run #",run)
             if config.combine_train_corruptions:
                 print('Combined training')
-                cmd0 = "python experiments/train.py --resume={} --run={} --experiment={} --epochs={} --learningrate={} --dataset={} " \
-                       "--validontest={} --lrschedule={} --lrparams=\"{}\" --earlystop={} --earlystopPatience={} --optimizer={} " \
-                       "--optimizerparams=\"{}\" --modeltype={} --modelparams=\"{}\" --resize={} --aug_strat_check={} " \
-                       "--train_aug_strat={} --loss={} --lossparams=\"{}\" --trades_loss={} --trades_lossparams=\"{}\" " \
-                       "--robust_loss={} --robust_lossparams=\"{}\" --mixup=\"{}\" --cutmix=\"{}\" --manifold=\"{}\" " \
-                       "--combine_train_corruptions={} --concurrent_combinations={} --batchsize={} --number_workers={} " \
-                       "--RandomEraseProbability={} --warmupepochs={} --normalize={} --pixel_factor={} --minibatchsize={} " \
-                       "--validonc={} --validonadv={} --swa={} --noise_sparsity={} --noise_patch_lower_scale={} --generated_ratio={} "\
-                    .format(resume, run, experiment, config.epochs, config.learningrate, config.dataset, config.validontest,
-                            config.lrschedule, config.lrparams, config.earlystop, config.earlystopPatience,
-                            config.optimizer, config.optimizerparams, config.modeltype, config.modelparams, config.resize,
-                            config.aug_strat_check, config.train_aug_strat, config.loss, config.lossparams, config.trades_loss,
-                            config.trades_lossparams, config.robust_loss, config.robust_lossparams,config.mixup,
-                            config.cutmix, config.manifold, config.combine_train_corruptions, config.concurrent_combinations,
-                            config.batchsize, config.number_workers, config.RandomEraseProbability,
-                            config.warmupepochs, config.normalize, config.pixel_factor, config.minibatchsize,
-                            config.validonc, config.validonadv, config.swa, config.noise_sparsity, config.noise_patch_lower_scale,
-                            config.generated_ratio)
+                cmd0 = f"python experiments/train.py --resume={resume} --run={run} --experiment={experiment} --epochs=" \
+                       f"{config.epochs} --learningrate={config.learningrate} --dataset={config.dataset} --validontest=" \
+                       f"{config.validontest} --lrschedule={config.lrschedule} --lrparams=\"{config.lrparams}\" " \
+                       f"--earlystop={config.earlystop} --earlystopPatience={config.earlystopPatience} --optimizer=" \
+                       f"{config.optimizer} --optimizerparams=\"{config.optimizerparams}\" --modeltype=" \
+                       f"{config.modeltype} --modelparams=\"{config.modelparams}\" --resize={config.resize} " \
+                       f"--aug_strat_check={config.aug_strat_check} --train_aug_strat={config.train_aug_strat} --loss=" \
+                       f"{config.loss} --lossparams=\"{config.lossparams}\" --trades_loss={config.trades_loss} " \
+                       f"--trades_lossparams=\"{config.trades_lossparams}\" --robust_loss={config.robust_loss} " \
+                       f"--robust_lossparams=\"{config.robust_lossparams}\" --mixup=\"{config.mixup}\" --cutmix=" \
+                       f"\"{config.cutmix}\" --manifold=\"{config.manifold}\" --combine_train_corruptions=" \
+                       f"{config.combine_train_corruptions} --concurrent_combinations={config.concurrent_combinations}" \
+                       f" --batchsize={config.batchsize} --number_workers={config.number_workers} " \
+                       f"--RandomEraseProbability={config.RandomEraseProbability} --warmupepochs={config.warmupepochs}" \
+                       f" --normalize={config.normalize} --pixel_factor={config.pixel_factor} --minibatchsize=" \
+                       f"{config.minibatchsize} --validonc={config.validonc} --validonadv={config.validonadv} --swa=" \
+                       f"\"{config.swa}\" --noise_sparsity={config.noise_sparsity} --noise_patch_lower_scale=" \
+                       f"{config.noise_patch_lower_scale} --generated_ratio={config.generated_ratio} "
                 os.system(cmd0)
             else:
                 for id, (train_corruption) in enumerate(config.train_corruptions):
                     print("Separate corruption training:", train_corruption)
-                    cmd0 = "python experiments/train.py --resume={} --train_corruptions=\"{}\" --run={} --experiment={} " \
-                           "--epochs={} --learningrate={} --dataset={} --validontest={} --lrschedule={} --lrparams=\"{}\" " \
-                           "--earlystop={} --earlystopPatience={} --optimizer={} --optimizerparams=\"{}\" --modeltype={} " \
-                           "--modelparams=\"{}\" --resize={} --aug_strat_check={} --train_aug_strat={} --loss={} " \
-                           "--lossparams=\"{}\" --trades_loss={} --trades_lossparams=\"{}\" --robust_loss={} " \
-                           "--robust_lossparams=\"{}\" --mixup=\"{}\" --cutmix=\"{}\" --manifold=\"{}\" " \
-                           "--combine_train_corruptions={} --concurrent_combinations={} --batchsize={} --number_workers={} " \
-                           "--RandomEraseProbability={} --warmupepochs={} --normalize={} --pixel_factor={} " \
-                           "--minibatchsize={} --validonc={} --validonadv={} --swa={} --noise_sparsity={} --noise_patch_lower_scale={}" \
-                           "--generated_ratio={} "\
-                        .format(resume, train_corruption, run, experiment, config.epochs, config.learningrate,
-                                config.dataset, config.validontest, config.lrschedule, config.lrparams, config.earlystop,
-                                config.earlystopPatience, config.optimizer, config.optimizerparams, config.modeltype,
-                                config.modelparams, config.resize, config.aug_strat_check, config.train_aug_strat,
-                                config.loss, config.lossparams, config.trades_loss,
-                                config.trades_lossparams, config.robust_loss, config.robust_lossparams, config.mixup,
-                                config.cutmix, config.manifold, config.combine_train_corruptions,
-                                config.concurrent_combinations, config.batchsize, config.number_workers,
-                                config.RandomEraseProbability, config.warmupepochs, config.normalize, config.pixel_factor,
-                                config.minibatchsize, config.validonc, config.validonadv, config.swa, config.noise_sparsity,
-                                config.noise_patch_lower_scale, config.generated_ratio)
+                    cmd0 = f"python experiments/train.py --resume={resume} --train_corruptions=\"{train_corruption}\"" \
+                           f" --run={run} --experiment={experiment} --epochs={config.epochs} " \
+                           f"--learningrate={config.learningrate} --dataset={config.dataset} --validontest=" \
+                           f"{config.validontest} --lrschedule={config.lrschedule} --lrparams=\"{config.lrparams}\" " \
+                           f"--earlystop={config.earlystop} --earlystopPatience={config.earlystopPatience} --optimizer=" \
+                           f"{config.optimizer} --optimizerparams=\"{config.optimizerparams}\" --modeltype=" \
+                           f"{config.modeltype} --modelparams=\"{config.modelparams}\" --resize={config.resize} " \
+                           f"--aug_strat_check={config.aug_strat_check} --train_aug_strat={config.train_aug_strat} --loss=" \
+                           f"{config.loss} --lossparams=\"{config.lossparams}\" --trades_loss={config.trades_loss} " \
+                           f"--trades_lossparams=\"{config.trades_lossparams}\" --robust_loss={config.robust_loss} " \
+                           f"--robust_lossparams=\"{config.robust_lossparams}\" --mixup=\"{config.mixup}\" --cutmix=" \
+                           f"\"{config.cutmix}\" --manifold=\"{config.manifold}\" --combine_train_corruptions=" \
+                           f"{config.combine_train_corruptions} --concurrent_combinations={config.concurrent_combinations}" \
+                           f" --batchsize={config.batchsize} --number_workers={config.number_workers} " \
+                           f"--RandomEraseProbability={config.RandomEraseProbability} --warmupepochs={config.warmupepochs}" \
+                           f" --normalize={config.normalize} --pixel_factor={config.pixel_factor} --minibatchsize=" \
+                           f"{config.minibatchsize} --validonc={config.validonc} --validonadv={config.validonadv} --swa=" \
+                           f"\"{config.swa}\" --noise_sparsity={config.noise_sparsity} --noise_patch_lower_scale=" \
+                           f"{config.noise_patch_lower_scale} --generated_ratio={config.generated_ratio} "
                     os.system(cmd0)
 
         # Calculate accuracy and robust accuracy, evaluating each trained network on each corruption

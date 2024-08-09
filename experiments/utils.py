@@ -69,7 +69,7 @@ class Checkpoint:
 
     def __init__(self, combine_train_corruptions, dataset, modeltype, experiment, train_corruption, run,
                  earlystopping=False, patience=7, verbose=False, delta=0, trace_func=print,
-                 checkpoint_path='experiments/trained_models/checkpoint.pt',
+                 checkpoint_path=f'experiments/trained_models/checkpoint.pt',
                  ):
         """
         Args:
@@ -106,6 +106,7 @@ class Checkpoint:
 
         if self.best_score is None:
             self.best_score = score
+            self.best_model = True
         elif score <= self.best_score + self.delta:
             self.counter += 1
             self.best_model = False
@@ -138,14 +139,17 @@ class Checkpoint:
 
     def save_checkpoint(self, model, swa_model, optimizer, scheduler, swa_scheduler, epoch):
 
+        swa_model = None if swa_model == None else swa_model.state_dict()
+        swa_scheduler = None if swa_scheduler == None else swa_scheduler.state_dict()
+
         if self.best_model == True:
             torch.save({
                 'epoch': epoch,
-                'model_state_dict': model.state_dict(),
+                'model_state_dict': model.module.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
                 'scheduler_state_dict': scheduler.state_dict(),
-                'swa_model_state_dict': swa_model.state_dict(),
-                'swa_scheduler_state_dict': swa_scheduler.state_dict(),
+                'swa_model_state_dict': swa_model,
+                'swa_scheduler_state_dict': swa_scheduler,
                 'best_epoch': epoch,
                 'best_model_state_dict': model.module.state_dict(),
             }, self.checkpoint_path)
@@ -156,8 +160,8 @@ class Checkpoint:
             checkpoint['model_state_dict'] = model.module.state_dict()
             checkpoint['optimizer_state_dict'] = optimizer.state_dict()
             checkpoint['scheduler_state_dict'] = scheduler.state_dict()
-            checkpoint['swa_model_state_dict'] = swa_model.state_dict()
-            checkpoint['swa_scheduler_state_dict'] = swa_scheduler.state_dict()
+            checkpoint['swa_model_state_dict'] = swa_model
+            checkpoint['swa_scheduler_state_dict'] = swa_scheduler
 
             torch.save(checkpoint, self.checkpoint_path)
 
@@ -199,7 +203,7 @@ class TrainTracking:
         if self.validonadv == True:
             valid_accs_adv = learning_curve_frame.iloc[:, columns].values.tolist()
             columns = columns + 1
-        if self.swa == True:
+        if self.swa['apply'] == True:
             valid_accs_swa = learning_curve_frame.iloc[:, columns].values.tolist()
             if self.validonc == True:
                 valid_accs_robust_swa = learning_curve_frame.iloc[:, columns+1].values.tolist()
@@ -241,7 +245,7 @@ class TrainTracking:
         if self.validonadv == True:
             learning_curve_frame.insert(columns, "valid_accuracy_adversarial", self.valid_accs_adv)
             columns = columns + 1
-        if self.swa == True:
+        if self.swa['apply'] == True:
             learning_curve_frame.insert(columns, "valid_accuracy_swa", self.valid_accs_swa)
             if self.validonc == True:
                 learning_curve_frame.insert(columns+1, "valid_accuracy_robust_swa", self.valid_accs_robust_swa)
@@ -260,7 +264,7 @@ class TrainTracking:
             plt.plot(x, self.valid_accs_robust, label='Robust Validation Accuracy')
         if self.validonadv == True:
             plt.plot(x, self.valid_accs_adv, label='Adversarial Validation Accuracy')
-        if self.swa == True:
+        if self.swa['apply'] == True:
             plt.plot(x, self.valid_accs_swa, label='SWA Validation Accuracy')
             plt.plot(x, self.valid_accs_robust_swa, label='SWA Robust Validation Accuracy')
             plt.plot(x, self.valid_accs_adv_swa, label='SWA Adversarial Validation Accuracy')
@@ -277,14 +281,14 @@ class TrainTracking:
                         f'./results/{self.dataset}/{self.modeltype}/config{self.experiment}.py')
 
     def print_results(self):
-        print("Maximum validation accuracy of", max(self.valid_accs), "achieved after",
-              np.argmax(self.valid_accs) + 1, "epochs; ")
+        print("Maximum validation accuracy of", max(self.valid_accs_swa), "achieved after",
+              np.argmax(self.valid_accs_swa) + 1, "epochs; ")
         if self.validonc:
-            print("Maximum robust validation accuracy of", max(self.valid_accs_robust), "achieved after",
-                  np.argmax(self.valid_accs_robust) + 1, "epochs; ")
+            print("Maximum robust validation accuracy of", max(self.valid_accs_robust_swa), "achieved after",
+                  np.argmax(self.valid_accs_robust_swa) + 1, "epochs; ")
         if self.validonadv:
-            print("Maximum adversarial validation accuracy of", max(self.valid_accs_adv), "achieved after",
-                  np.argmax(self.valid_accs_adv) + 1, "epochs; ")
+            print("Maximum adversarial validation accuracy of", max(self.valid_accs_adv_swa), "achieved after",
+                  np.argmax(self.valid_accs_adv_swa) + 1, "epochs; ")
 
 class TestTracking:
     def __init__(self, dataset, modeltype, experiment, runs, combine_train_corruptions, combine_test_corruptions,

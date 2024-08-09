@@ -1,0 +1,5 @@
+train_accuracy;train_loss;valid_accuracy;valid_loss;valid_accuracy_robust;valid_accuracy_adversarial;valid_accuracy_swa;valid_accuracy_robust_swa;valid_accuracy_adversarial_swa
+6,2800;4,3431;10,8300;4,0332;11,0759;5,5400;10,8300;11,0759;5,5400
+11,6740;4,0898;15,4600;3,8144;12,7138;8,6500;15,4600;12,7138;8,6500
+16,6900;3,9269;20,4100;3,6589;21,0138;9,2000;20,4100;21,0138;9,2000
+21,4140;3,7835;25,3900;3,6006;27,7034;10,3200;25,3900;27,7034;10,3200

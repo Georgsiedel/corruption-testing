@@ -73,7 +73,7 @@ class CombinedDataset(Dataset):
 
             self.num_generated = int(self.target_size * self.generated_ratio)
             self.num_original = self.target_size - self.num_generated
-
+            print('new permutation')
             # Create a single permutation for the whole epoch
             original_perm = torch.randperm(self.original_length)
             generated_perm = torch.randperm(self.original_generated_length)
@@ -152,8 +152,9 @@ class BalancedRatioSampler(Sampler):
 
             # Combine
             batch_indices = torch.cat((original_indices, generated_indices))
+            shuffled_batch_indices = batch_indices[torch.randperm(batch_indices.size(0))]
 
-            yield batch_indices.tolist()
+            yield shuffled_batch_indices.tolist()
 
     def __len__(self):
         return (self.size + self.batch_size - 1) // self.batch_size
@@ -174,7 +175,6 @@ class AugmentedDataset(torch.utils.data.Dataset):
   def __getitem__(self, i):
     x, y, original = self.dataset[i]
     augment = self.transforms_augmentation if original == True else self.transforms_generated
-
     if self.robust_samples == 0:
       return augment(x), y
     elif self.robust_samples == 1:
