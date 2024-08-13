@@ -112,6 +112,7 @@ if __name__ == '__main__':
             model = torch.nn.DataParallel(model).to(device)
             cudnn.benchmark = True
             model.load_state_dict(torch.load(Testtracker.filename)['model_state_dict'], strict=False)
+
             model.eval()
 
             # Clean Test Accuracy

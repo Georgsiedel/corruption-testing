@@ -372,7 +372,7 @@ class TestTracking:
                                                 ['Adversarial_accuracy_autoattack', 'Mean_adv_distance_autoattack)'],
                                                 axis=0)
         if self.combine_test_corruptions == True:
-            test_corruptions_string = np.append(test_corruptions_string, ['Combined Noise'])
+            test_corruptions_string = np.append(test_corruptions_string, ['Combined_Noise'])
         else:
             test_corruptions_labels = np.array([','.join(map(str, row.values())) for row in self.test_corruptions])
             test_corruptions_string = np.append(test_corruptions_string, test_corruptions_labels)

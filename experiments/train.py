@@ -1,5 +1,7 @@
 import argparse
 import importlib
+from multiprocessing import freeze_support
+
 import numpy as np
 from tqdm import tqdm
 import torch.cuda.amp
@@ -116,9 +118,9 @@ else:
     train_corruptions = args.train_corruptions
 
 def train_epoch(pbar):
+
     model.train()
     correct, total, train_loss, avg_train_loss = 0, 0, 0, 0
-
     for batch_idx, (inputs, targets) in enumerate(trainloader):
         optimizer.zero_grad()
 
@@ -193,7 +195,7 @@ def valid_epoch(pbar, net):
             pbar.set_description(
                 '[Valid] Robust Accuracy Calculation. Last Robust Accuracy: {:.3f}'.format(Traintracker.valid_accs_robust[-1] if Traintracker.valid_accs_robust else 0))
             acc_c = compute_c_corruptions(args.dataset, testsets_c, net, batchsize=200,
-                                          num_classes=num_classes, eval_run = True)[0]
+                                          num_classes=DataLoader.num_classes, eval_run = True)[0]
         pbar.update(1)
 
     acc = 100. * correct / total
@@ -203,28 +205,29 @@ def valid_epoch(pbar, net):
 if __name__ == '__main__':
     # Load and transform data
     print('Preparing data..')
-    transforms_preprocess, transforms_augmentation, transforms_basic = data.create_transforms(args.dataset,
-                                args.aug_strat_check, args.train_aug_strat, args.resize, args.RandomEraseProbability)
+    freeze_support()
 
     lossparams = args.trades_lossparams | args.robust_lossparams | args.lossparams
     criterion = losses.Criterion(args.loss, trades_loss=args.trades_loss, robust_loss=args.robust_loss, **lossparams)
 
-    trainset, validset, testset, num_classes = data.load_data(args.dataset, args.validontest, transforms_preprocess,
-                        transforms_augmentation, transforms_basic=transforms_basic, transforms_generated=transforms_augmentation,
-                        run=args.run, robust_samples=criterion.robust_samples, generated_ratio=args.generated_ratio)
-    testsets_c = data.load_data_c(args.dataset, testset, args.resize, transforms_preprocess, args.validonc, subsetsize=200)
-    trainloader, validationloader = data.load_loader(trainset, validset, args.batchsize, args.number_workers,
-                                                     args.generated_ratio)
+    DataLoader = data.DataLoading(args.dataset, args.generated_ratio, args.resize)
+    DataLoader.create_transforms(args.aug_strat_check, args.train_aug_strat, args.RandomEraseProbability)
+    DataLoader.load_base_data(args.validontest, args.run)
+    DataLoader.load_augmented_traindata(transforms_generated=DataLoader.transforms_augmentation,
+                                        robust_samples=criterion.robust_samples)
+    testsets_c = DataLoader.load_data_c(subset=args.validonc, subsetsize=200)
+    trainloader, validationloader = DataLoader.get_loader(args.batchsize, args.number_workers)
+
     # Construct model
     print(f'\nBuilding {args.modeltype} model with {args.modelparams} | Augmentation strategy: {args.aug_strat_check}'
           f' | Loss Function: {args.loss}, Stability Loss: {args.robust_loss}, Trades Loss: {args.trades_loss}')
     if args.dataset in ('CIFAR10', 'CIFAR100', 'TinyImageNet'):
         model_class = getattr(low_dim_models, args.modeltype)
-        model = model_class(dataset=args.dataset, normalized =args.normalize, num_classes=num_classes,
+        model = model_class(dataset=args.dataset, normalized =args.normalize, num_classes=DataLoader.num_classes,
                             factor=args.pixel_factor, **args.modelparams)
     else:
         model_class = getattr(torchmodels, args.modeltype)
-        model = model_class(num_classes = num_classes, **args.modelparams)
+        model = model_class(num_classes = DataLoader.num_classes, **args.modelparams)
     model = torch.nn.DataParallel(model).to(device)
 
     # Define Optimizer, Learningrate Scheduler, Scaler, and Early Stopping
@@ -265,6 +268,10 @@ if __name__ == '__main__':
         with torch.autograd.set_detect_anomaly(False, check_nan=False): #this may resolve some Cuda/cuDNN errors.
             # check_nan=True increases 32bit precision train time by ~20% and causes errors due to nan values for mixed precision training.
             for epoch in range(start_epoch, end_epoch):
+
+                #get new generated data sample in the trainset
+                trainloader = DataLoader.update_trainset()
+
                 train_acc, train_loss = train_epoch(pbar)
                 valid_acc, valid_loss, valid_acc_robust, valid_acc_adv = valid_epoch(pbar, model)
 
