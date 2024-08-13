@@ -91,9 +91,10 @@ if __name__ == '__main__':
                                 test_corruptions, args.adv_distance_params)
 
     # Load data
-    test_transforms,_,_ = data.create_transforms(args.dataset, aug_strat_check=False, train_aug_strat='None', resize=args.resize)
-    _, _, testset, num_classes = data.load_data(dataset=args.dataset, validontest=True, transforms_preprocess=test_transforms)
-    testloader = DataLoader(testset, batch_size=args.batchsize, shuffle=False, pin_memory=True,
+    Dataloader = data.DataLoading(dataset=args.dataset, generated_ratio=0.0, resize=args.resize)
+    Dataloader.create_transforms(aug_strat_check=False, train_aug_strat='None')
+    Dataloader.load_base_data(validontest=True)
+    testloader = DataLoader(Dataloader.testset, batch_size=args.batchsize, shuffle=False, pin_memory=True,
                             num_workers=args.number_workers)
 
     for run in range(args.runs):
@@ -104,11 +105,11 @@ if __name__ == '__main__':
             # Load model
             if args.dataset in ('CIFAR10', 'CIFAR100', 'TinyImageNet'):
                 model_class = getattr(low_dim_models, args.modeltype)
-                model = model_class(dataset=args.dataset, normalized=args.normalize, num_classes=num_classes,
+                model = model_class(dataset=args.dataset, normalized=args.normalize, num_classes=Dataloader.num_classes,
                                     factor=args.pixel_factor, **args.modelparams)
             else:
                 model_class = getattr(torchmodels, args.modeltype)
-                model = model_class(num_classes=num_classes, **args.modelparams)
+                model = model_class(num_classes=Dataloader.num_classes, **args.modelparams)
             model = torch.nn.DataParallel(model).to(device)
             cudnn.benchmark = True
             model.load_state_dict(torch.load(Testtracker.filename)['model_state_dict'], strict=False)
@@ -116,23 +117,24 @@ if __name__ == '__main__':
             model.eval()
 
             # Clean Test Accuracy
-            acc, rmsce = compute_clean(testloader, model, num_classes)
+            acc, rmsce = compute_clean(testloader, model, Dataloader.num_classes)
             Testtracker.track_results([acc, rmsce])
 
             if args.test_on_c == True:  # C-dataset robust accuracy
-                testsets_c = data.load_data_c(args.dataset, testset, args.resize, test_transforms, subset=False, subsetsize=None)
-                accs_c = eval_corruptions.compute_c_corruptions(args.dataset, testsets_c, model, args.batchsize, num_classes,
-                                                                eval_run=False)
+                testsets_c = Dataloader.load_data_c(subset=False, subsetsize=None)
+                accs_c = eval_corruptions.compute_c_corruptions(args.dataset, testsets_c, model, args.batchsize,
+                                                                Dataloader.num_classes, eval_run=False)
                 Testtracker.track_results(accs_c)
 
             if args.calculate_adv_distance == True:  # adversarial distance calculation
-                adv_acc, dist_sorted, mean_dist = eval_adversarial.compute_adv_distance(testset, args.number_workers, model, args.adv_distance_params)
+                adv_acc, dist_sorted, mean_dist = eval_adversarial.compute_adv_distance(Dataloader.testset,
+                                                                args.number_workers, model, args.adv_distance_params)
                 Testtracker.track_results(np.concatenate(([adv_acc], mean_dist)))
                 Testtracker.save_adv_distance(dist_sorted, args.adv_distance_params)
 
             if args.calculate_autoattack_robustness == True:  # adversarial accuracy calculation
-                adv_acc_aa, mean_dist_aa = eval_adversarial.compute_adv_acc(args.autoattack_params, testset, model,
-                                                                            args.number_workers, args.batchsize)
+                adv_acc_aa, mean_dist_aa = eval_adversarial.compute_adv_acc(args.autoattack_params, Dataloader.testset,
+                                                                            model, args.number_workers, args.batchsize)
                 Testtracker.track_results([adv_acc_aa, mean_dist_aa])
 
             # Robust Accuracy on p-norm noise - either combined or separate noise types
