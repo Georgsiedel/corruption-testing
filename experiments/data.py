@@ -172,9 +172,6 @@ class AugmentedDataset(torch.utils.data.Dataset):
         self.original_length = getattr(dataset, 'original_length', None)
         self.generated_length = getattr(dataset, 'generated_length', None)
 
-    def update_datamix(self):
-        self.dataset.update_datamix()
-
     def __getitem__(self, i):
         x, y, original = self.dataset[i]
         augment = self.transforms_augmentation if original == True else self.transforms_generated
