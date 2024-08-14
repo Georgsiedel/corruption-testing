@@ -12,7 +12,7 @@ train_corruptions = np.array([
 {'noise_type': 'uniform-l0-impulse', 'epsilon': 0.2, 'sphere': False, 'distribution': 'uniform'},
 {'noise_type': 'uniform-l0-impulse', 'epsilon': 0.15, 'sphere': True, 'distribution': 'uniform'}
 ])
-noise_sparsity = 1.0
+noise_sparsity = 0.0
 noise_patch_lower_scale = 1.0
 combine_train_corruptions = True #augment the train dataset with all corruptions
 concurrent_combinations = 1 #only has an effect if combine_train_corruption is True
@@ -20,7 +20,7 @@ concurrent_combinations = 1 #only has an effect if combine_train_corruption is T
 batchsize = 512
 minibatchsize = 8
 dataset = 'CIFAR100' #ImageNet #CIFAR100 #CIFAR10 #TinyImageNet
-generated_ratio = 0.5
+generated_ratio = 0.0
 normalize = True
 validontest = True
 validonc = True
