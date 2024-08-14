@@ -19,7 +19,7 @@ class RandomMixup(torch.nn.Module):
         inplace (bool): boolean to make this transform inplace. Default set to False.
     """
 
-    def __init__(self, num_classes: int, p: float = 0.5, alpha: float = 1.0, inplace: bool = False) -> None:
+    def __init__(self, num_classes: int, p: float = 0.5, alpha: float = 1.0, generated_ratio: float = 0.0, inplace: bool = False) -> None:
         super().__init__()
 
         if num_classes < 1:
@@ -33,6 +33,7 @@ class RandomMixup(torch.nn.Module):
         self.num_classes = num_classes
         self.p = p
         self.alpha = alpha
+        self.generated_ratio = generated_ratio
         self.inplace = inplace
 
     def forward(self, batch: Tensor, target: Tensor, robust_samples: int) -> Tuple[Tensor, Tensor]:
@@ -63,11 +64,17 @@ class RandomMixup(torch.nn.Module):
 
         lambda_param = np.random.beta(self.alpha, self.alpha) if self.alpha > 0.0 else 1.0
 
+        #Here, we do mixup and cutmix separately for original and for generated images to not mix up different confidences
         q = int(batch.shape[0] / (robust_samples+1))
-        index = torch.randperm(q).cuda()
+        gen = int(q * self.generated_ratio)
+        orig = q - gen
+        index_gen = torch.randperm(gen).cuda()
+        index_orig = torch.randperm(orig).cuda()
         for i in range(robust_samples+1):
-            batch[q*i:q*(i+1)] = lambda_param * batch[q*i:q*(i+1)] + (1 - lambda_param) * batch[q*i:q*(i+1)][index]
-        target = lambda_param * target + (1 - lambda_param) * target[index]
+            batch[q*i:q*i+orig] = lambda_param * batch[q*i:q*i+orig] + (1 - lambda_param) * batch[q*i:q*i+orig][index_orig]
+            batch[q*i+orig:q*(i+1)] = lambda_param * batch[q*i+orig:q*(i+1)] + (1 - lambda_param) * batch[q*i+orig:q*(i+1)][index_gen]
+        target[:orig] = lambda_param * target[:orig] + (1 - lambda_param) * target[:orig][index_orig]
+        target[orig:] = lambda_param * target[orig:] + (1 - lambda_param) * target[orig:][index_gen]
 
         return batch, target
 
@@ -96,7 +103,7 @@ class RandomCutmix(torch.nn.Module):
         inplace (bool): boolean to make this transform inplace. Default set to False.
     """
 
-    def __init__(self, num_classes: int, p: float = 0.5, alpha: float = 1.0, inplace: bool = False) -> None:
+    def __init__(self, num_classes: int, p: float = 0.5, alpha: float = 1.0, generated_ratio: float = 0.0, inplace: bool = False) -> None:
         super().__init__()
         if num_classes < 1:
             raise ValueError("Please provide a valid positive value for the num_classes.")
@@ -106,6 +113,7 @@ class RandomCutmix(torch.nn.Module):
         self.num_classes = num_classes
         self.p = p
         self.alpha = alpha
+        self.generated_ratio = generated_ratio
         self.inplace = inplace
 
     def forward(self, batch: Tensor, target: Tensor, robust_samples: int) -> Tuple[Tensor, Tensor]:
@@ -155,25 +163,17 @@ class RandomCutmix(torch.nn.Module):
 
         lambda_param = float(1.0 - (x2 - x1) * (y2 - y1) / (W * H))
 
-        #batches = batch.view(robust_samples + 1, -1, batch.size()[1], batch.size()[2], batch.size()[3])
-        #for id, b in enumerate(batches):
-
-            #It's faster to roll the batch by one instead of shuffling it to create image pairs
-        #    batch_rolled = b.roll(1, 0)
-        #    b_clone = b.clone()
-        #    b_clone[:, :, y1:y2, x1:x2] = batch_rolled[:, :, y1:y2, x1:x2]
-        #    batches[id] = b
-
-        #batch = batches.view(-1, batch.size()[1], batch.size()[2], batch.size()[3])
-
-        #target_rolled = target.roll(1, 0)
-        #target_weighted = target*lambda_param + target_rolled * (1.0 - lambda_param)
-
+        #Here, we do mixup and cutmix separately for original and for generated images to not mix up different confidences
         q = int(batch.shape[0] / (robust_samples+1))
-        index = torch.randperm(q).cuda()
+        gen = int(q * self.generated_ratio)
+        orig = q - gen
+        index_gen = torch.randperm(gen).cuda()
+        index_orig = torch.randperm(orig).cuda()
         for i in range(robust_samples+1):
-            batch[q*i:q*(i+1), :, y1:y2, x1:x2] = batch[q*i:q*(i+1), :, y1:y2, x1:x2][index]
-        target = lambda_param * target + (1 - lambda_param) * target[index]
+            batch[q*i:q*i+orig, :, y1:y2, x1:x2] = batch[q*i:q*i+orig, :, y1:y2, x1:x2][index_orig]
+            batch[q*i+orig:q*(i+1), :, y1:y2, x1:x2] = batch[q*i+orig:q*(i+1), :, y1:y2, x1:x2][index_gen]
+        target[:orig] = lambda_param * target[:orig] + (1 - lambda_param) * target[:orig][index_orig]
+        target[orig:] = lambda_param * target[orig:] + (1 - lambda_param) * target[orig:][index_gen]
 
         return batch, target
 
@@ -188,7 +188,8 @@ class RandomCutmix(torch.nn.Module):
         )
         return s
 
-def mixup_process(inputs, targets, robust_samples, num_classes, mixup_alpha, mixup_p, cutmix_alpha, cutmix_p, manifold, inplace):
+def mixup_process(inputs, targets, robust_samples, num_classes, mixup_alpha, mixup_p, cutmix_alpha, cutmix_p,
+                  generated_ratio, manifold, inplace):
 
     #if manifold==True and (mixup_p > 0.0 or cutmix_p > 0.0):
     #    mixupcutmix = RandomMixup(num_classes, p=mixup_p, alpha=mixup_alpha, inplace=inplace)
@@ -204,10 +205,10 @@ def mixup_process(inputs, targets, robust_samples, num_classes, mixup_alpha, mix
         random_number = random.uniform(0, 1)
 
         if random_number < cutmix_p:
-            mixupcutmix = RandomCutmix(num_classes, p=1.0, alpha=cutmix_alpha, inplace=inplace)
+            mixupcutmix = RandomCutmix(num_classes, p=1.0, alpha=cutmix_alpha, generated_ratio=generated_ratio, inplace=inplace)
             inputs, targets = mixupcutmix(inputs, targets, robust_samples)
         elif random_number < cutmix_p + mixup_p:
-            mixupcutmix = RandomMixup(num_classes, p=1.0, alpha=mixup_alpha, inplace=inplace)
+            mixupcutmix = RandomMixup(num_classes, p=1.0, alpha=mixup_alpha, generated_ratio=generated_ratio, inplace=inplace)
             inputs, targets = mixupcutmix(inputs, targets, robust_samples)
         else:
             return inputs, targets

@@ -131,7 +131,8 @@ def train_epoch(pbar):
             outputs, mixed_targets = model(inputs, targets, criterion.robust_samples, train_corruptions, args.mixup['alpha'],
                                            args.mixup['p'], args.manifold['apply'], args.manifold['noise_factor'],
                                            args.cutmix['alpha'], args.cutmix['p'], args.minibatchsize,
-                                           args.concurrent_combinations, args.noise_sparsity, args.noise_patch_lower_scale)
+                                           args.concurrent_combinations, args.noise_sparsity, args.noise_patch_lower_scale,
+                                           Dataloader.generated_ratio)
             criterion.update(model, optimizer)
             loss = criterion(outputs, mixed_targets, inputs, targets)
         loss.retain_grad()

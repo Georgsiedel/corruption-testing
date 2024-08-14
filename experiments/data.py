@@ -157,9 +157,9 @@ class BalancedRatioSampler(Sampler):
 
             # Combine
             batch_indices = torch.cat((original_indices, generated_indices))
-            shuffled_batch_indices = batch_indices[torch.randperm(batch_indices.size(0))]
+            #batch_indices = batch_indices[torch.randperm(batch_indices.size(0))]
 
-            yield shuffled_batch_indices.tolist()
+            yield batch_indices.tolist()
 
     def __len__(self):
         return (self.size + self.batch_size - 1) // self.batch_size

@@ -24,7 +24,7 @@ class CtModel(nn.Module):
 
     def forward_noise_mixup(self, out, targets, robust_samples, corruptions, mixup_alpha, mixup_p, manifold,
                             manifold_noise_factor, cutmix_alpha, cutmix_p, noise_minibatchsize,
-                            concurrent_combinations, noise_sparsity, noise_patch_lower_scale):
+                            concurrent_combinations, noise_sparsity, noise_patch_lower_scale, generated_ratio):
 
         #define where mixup is applied. k=0 is in the input space, k>0 is in the embedding space (manifold mixup)
         if self.training == False: k = -1
@@ -35,7 +35,7 @@ class CtModel(nn.Module):
 
         if k == 0:  # Do input mixup if k is 0
             mixed_out, targets = mixup_process(out, targets, robust_samples, self.num_classes, mixup_alpha, mixup_p,
-                                         cutmix_alpha, cutmix_p, manifold=False, inplace=True)
+                                         cutmix_alpha, cutmix_p, generated_ratio, manifold=False, inplace=True)
             noisy_out = apply_noise(mixed_out, noise_minibatchsize, corruptions, concurrent_combinations,
                                                              self.normalized, self.dataset,
                                                              manifold=False, manifold_factor=1, noise_sparsity=noise_sparsity,
@@ -49,7 +49,7 @@ class CtModel(nn.Module):
             out = ResidualBlock(out)
             if k == (i + 1):  # Do manifold mixup if k is greater 0
                 out, targets = mixup_process(out, targets, robust_samples, self.num_classes, mixup_alpha, mixup_p,
-                                         cutmix_alpha, cutmix_p, manifold=True, inplace=False)
+                                         cutmix_alpha, cutmix_p, generated_ratio, manifold=True, inplace=False)
                 out = noise_up(out, robust_samples=robust_samples, add_noise_level=1.0, mult_noise_level=0.5,
                                         sparse_level=noise_sparsity, l0_level=0.1)
         return out, targets
