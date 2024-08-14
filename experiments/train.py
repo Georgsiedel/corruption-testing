@@ -213,7 +213,8 @@ if __name__ == '__main__':
     Dataloader = data.DataLoading(args.dataset, args.generated_ratio, args.resize)
     Dataloader.create_transforms(args.aug_strat_check, args.train_aug_strat, args.RandomEraseProbability)
     Dataloader.load_base_data(args.validontest, args.run)
-    Dataloader.load_augmented_traindata(transforms_generated=Dataloader.transforms_augmentation,
+    Dataloader.load_augmented_traindata(target_size=len(Dataloader.base_trainset),
+                                        transforms_generated=Dataloader.transforms_augmentation,
                                         robust_samples=criterion.robust_samples)
     testsets_c = Dataloader.load_data_c(subset=args.validonc, subsetsize=200)
     trainloader, validationloader = Dataloader.get_loader(args.batchsize, args.number_workers)
@@ -270,7 +271,7 @@ if __name__ == '__main__':
             for epoch in range(start_epoch, end_epoch):
 
                 #get new generated data sample in the trainset
-                trainloader = Dataloader.update_trainset()
+                trainloader = Dataloader.update_trainset(epoch)
 
                 train_acc, train_loss = train_epoch(pbar)
                 valid_acc, valid_loss, valid_acc_robust, valid_acc_adv = valid_epoch(pbar, model)

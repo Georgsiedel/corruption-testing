@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import random
 import time
 
 import torch
@@ -69,6 +70,10 @@ class CombinedDataset(Dataset):
         self.images = [None] * self.target_size
         self.labels = [None] * self.target_size
         self.sources = [None] * self.target_size
+
+        torch.manual_seed(5)
+        np.random.seed(5)
+        random.seed(5)
 
         if self.generated_dataset == None or self.generated_ratio == 0.0:
             self.images, self.labels = zip(*self.original_dataset)
@@ -162,30 +167,32 @@ class BalancedRatioSampler(Sampler):
 class AugmentedDataset(torch.utils.data.Dataset):
     """Dataset wrapper to perform augmentations and allow robust loss functions."""
 
-    def __init__(self, dataset, transforms_preprocess, transforms_augmentation, transforms_generated=None,
-               robust_samples=0):
-        self.dataset = dataset
+    def __init__(self, images, labels, sources, transforms_preprocess, transforms_basic, transforms_augmentation,
+                 transforms_generated=None, robust_samples=0):
+        self.images = images
+        self.labels = labels
+        self.sources = sources
         self.preprocess = transforms_preprocess
+        self.transforms_basic = transforms_basic
         self.transforms_augmentation = transforms_augmentation
         self.transforms_generated = transforms_generated if transforms_generated else transforms_augmentation
         self.robust_samples = robust_samples
-        self.original_length = getattr(dataset, 'original_length', None)
-        self.generated_length = getattr(dataset, 'generated_length', None)
 
     def __getitem__(self, i):
-        x, y, original = self.dataset[i]
-        augment = self.transforms_augmentation if original == True else self.transforms_generated
+        x = self.images[i]
+        aug_strat = self.transforms_augmentation if self.sources[i] == True else self.transforms_generated
+        augment = transforms.Compose([self.transforms_basic, aug_strat])
         if self.robust_samples == 0:
-          return augment(x), y
+          return augment(x), self.labels[i]
         elif self.robust_samples == 1:
           im_tuple = (self.preprocess(x), augment(x))
-          return im_tuple, y
+          return im_tuple, self.labels[i]
         elif self.robust_samples == 2:
           im_tuple = (self.preprocess(x), augment(x), augment(x))
-          return im_tuple, y
+          return im_tuple, self.labels[i]
 
     def __len__(self):
-        return len(self.dataset)
+        return len(self.labels)
 
 class DataLoading():
     def __init__(self, dataset, generated_ratio=0.0, resize = False):
@@ -276,18 +283,58 @@ class DataLoading():
             print('Dataset not loadable')
         self.num_classes = len(self.testset.classes)
 
+    def load_augmented_traindata(self, target_size, seed=42, transforms_generated = None, robust_samples=0):
 
-    def load_augmented_traindata(self, transforms_generated = None, robust_samples=0):
         self.transforms_generated = transforms_generated
         self.robust_samples = robust_samples
-
-        generated_dataset = np.load(f'./experiments/data/{self.dataset}-add-1m-dm.npz',
+        self.target_size = target_size
+        self.generated_dataset = np.load(f'./experiments/data/{self.dataset}-add-1m-dm.npz',
                                     mmap_mode='r') if self.generated_ratio > 0.0 else None
-        self.trainset = CombinedDataset(self.base_trainset, generated_dataset, target_size=len(self.base_trainset),
-                                   generated_ratio=self.generated_ratio, transform=self.transforms_basic)
-        self.trainset = AugmentedDataset(self.trainset, self.transforms_preprocess, self.transforms_augmentation,
-                                    transforms_generated, robust_samples)
 
+        torch.manual_seed(seed)
+        np.random.seed(seed)
+        random.seed(seed)
+
+        # Prepare lists for combined data
+        images = [None] * self.target_size
+        labels = [None] * self.target_size
+        sources = [None] * self.target_size
+
+        if self.generated_dataset == None or self.generated_ratio == 0.0:
+            images, labels = zip(*self.base_trainset)
+            if isinstance(images[0], torch.Tensor):
+                images = TF.to_pil_image(images)
+            sources = [True] * len(self.base_trainset)
+        else:
+            self.num_generated = int(self.target_size * self.generated_ratio)
+            self.num_original = self.target_size - self.num_generated
+            # Create a single permutation for the whole epoch
+            original_perm = torch.randperm(len(self.base_trainset))
+            generated_perm = torch.randperm(len(self.generated_dataset['image']))
+
+            original_indices = original_perm[0:self.num_original]
+            generated_indices = generated_perm[0:self.num_generated]
+            generated_images = list(map(Image.fromarray, self.generated_dataset['image'][generated_indices]))
+            generated_labels = self.generated_dataset['label'][generated_indices]
+
+            original_subset = Subset(self.base_trainset, original_indices)
+            original_images, original_labels = zip(*original_subset)
+            if isinstance(original_images[0], torch.Tensor):
+                original_images = TF.to_pil_image(original_images)
+
+            # Transform and append original data
+            images[:self.num_original] = original_images
+            labels[:self.num_original] = original_labels
+            sources[:self.num_original] = [True] * self.num_original
+
+            # Append NPZ data
+            images[self.num_original:self.target_size] = generated_images
+            labels[self.num_original:self.target_size] = generated_labels
+            sources[self.num_original:self.target_size] = [False] * self.num_generated
+
+        self.trainset = AugmentedDataset(images, labels, sources, self.transforms_preprocess,
+                                         self.transforms_basic, self.transforms_augmentation, transforms_generated,
+                                         robust_samples)
 
     def load_data_c(self, subset, subsetsize):
 
@@ -350,9 +397,10 @@ class DataLoading():
 
         return self.trainloader, self.validationloader
 
-    def update_trainset(self):
+    def update_trainset(self, epoch):
         if self.generated_ratio != 0.0:
-            self.load_augmented_traindata(self.transforms_generated, self.robust_samples)
+            self.load_augmented_traindata(self.target_size, seed=epoch, transforms_generated=self.transforms_generated,
+                                          robust_samples=self.robust_samples)
             self.trainloader = DataLoader(self.trainset, batch_sampler=self.CustomSampler, pin_memory=True,
                                           num_workers=self.number_workers)
         return self.trainloader
