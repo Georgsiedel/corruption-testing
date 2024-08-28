@@ -12,10 +12,11 @@ class CtModel(nn.Module):
         self.normalized = normalized
         self.num_classes = num_classes
         self.dataset = dataset
+        self.mean, self.std = normalization_values(batch=None, dataset=dataset, normalized=normalized, manifold=False,
+                                                   manifold_factor=1)
         if normalized:
-            mean, std = normalization_values(batch=None, dataset=dataset, normalized=normalized, manifold=False, manifold_factor=1)
-            self.register_buffer('mu', mean)
-            self.register_buffer('sigma', std)
+            self.register_buffer('mu', self.mean)
+            self.register_buffer('sigma', self.std)
 
     def forward_normalize(self, x):
         if self.normalized:
@@ -24,7 +25,8 @@ class CtModel(nn.Module):
 
     def forward_noise_mixup(self, out, targets, robust_samples, corruptions, mixup_alpha, mixup_p, manifold,
                             manifold_noise_factor, cutmix_alpha, cutmix_p, noise_minibatchsize,
-                            concurrent_combinations, noise_sparsity, noise_patch_lower_scale, generated_ratio):
+                            concurrent_combinations, noise_sparsity, noise_patch_lower_scale, noise_patch_upper_scale,
+                            generated_ratio):
 
         #define where mixup is applied. k=0 is in the input space, k>0 is in the embedding space (manifold mixup)
         if self.training == False: k = -1
@@ -37,11 +39,12 @@ class CtModel(nn.Module):
             mixed_out, targets = mixup_process(out, targets, robust_samples, self.num_classes, mixup_alpha, mixup_p,
                                          cutmix_alpha, cutmix_p, generated_ratio, manifold=False, inplace=True)
             noisy_out = apply_noise(mixed_out, noise_minibatchsize, corruptions, concurrent_combinations,
-                                                             self.normalized, self.dataset,
-                                                             manifold=False, manifold_factor=1, noise_sparsity=noise_sparsity,
-                                                             noise_patch_lower_scale=noise_patch_lower_scale)
+                                                            self.normalized, self.dataset,
+                                                            manifold=False, manifold_factor=1, noise_sparsity=noise_sparsity,
+                                                            noise_patch_lower_scale=noise_patch_lower_scale,
+                                                            noise_patch_upper_scale=noise_patch_upper_scale)
             out = noisy_out
-            #plot_images(noisy_out, mixed_out, 3)
+            #plot_images(noisy_out, mixed_out, 3, self.mean, self.std)
 
         out = self.blocks[0](out)
 
@@ -51,6 +54,6 @@ class CtModel(nn.Module):
                 out, targets = mixup_process(out, targets, robust_samples, self.num_classes, mixup_alpha, mixup_p,
                                          cutmix_alpha, cutmix_p, generated_ratio, manifold=True, inplace=False)
                 out = noise_up(out, robust_samples=robust_samples, add_noise_level=1.0, mult_noise_level=0.5,
-                                        sparse_level=noise_sparsity, l0_level=0.1)
+                                        sparse_level=noise_sparsity, l0_level=0.0)
         return out, targets
 

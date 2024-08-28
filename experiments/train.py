@@ -99,13 +99,14 @@ parser.add_argument('--validonc', type=utils.str2bool, nargs='?', const=False, d
                     help='Whether to do a validation on a subset of c-data every epoch')
 parser.add_argument('--validonadv', type=utils.str2bool, nargs='?', const=False, default=False,
                     help='Whether to do a validation with an FGSM adversarial attack every epoch')
-parser.add_argument('--swa', default={'start_factor': 0.85, 'lr_factor': 0.2}, type=str, action=utils.str2dictAction,
-                    metavar='KEY=VALUE', help='start_factor defines when to start weight averaging compared to overall '
-                    'epochs. lr_factor defines which learning rate to use in the averaged area.')
+parser.add_argument('--swa', default={'apply': True, 'start_factor': 0.85, 'lr_factor': 0.2}, type=str,
+                    action=utils.str2dictAction, metavar='KEY=VALUE', help='start_factor defines when to start weight '
+                    'averaging compared to overall epochs. lr_factor defines which learning rate to use in the averaged area.')
 parser.add_argument('--noise_sparsity', default=0.0, type=float,
                     help='probability of not applying a calculated noise value to a dimension of an image')
-parser.add_argument('--noise_patch_lower_scale', default=1.0, type=float, help='lower bound of the scale to choose the '
-                    'area ratio of the image from, which gets perturbed by random noise')
+parser.add_argument('--noise_patch_scale', default={'lower': 0.3, 'upper': 1.0}, type=str, action=utils.str2dictAction,
+                    metavar='KEY=VALUE', help='bounds of the scale to choose the area ratio of the image from, which '
+                    'gets perturbed by random noise')
 parser.add_argument('--generated_ratio', default=0.0, type=float, help='ratio of synthetically generated images mixed '
                     'into every training batch')
 
@@ -131,8 +132,8 @@ def train_epoch(pbar):
             outputs, mixed_targets = model(inputs, targets, criterion.robust_samples, train_corruptions, args.mixup['alpha'],
                                            args.mixup['p'], args.manifold['apply'], args.manifold['noise_factor'],
                                            args.cutmix['alpha'], args.cutmix['p'], args.minibatchsize,
-                                           args.concurrent_combinations, args.noise_sparsity, args.noise_patch_lower_scale,
-                                           Dataloader.generated_ratio)
+                                           args.concurrent_combinations, args.noise_sparsity, args.noise_patch_scale['lower'],
+                                           args.noise_patch_scale['upper'], Dataloader.generated_ratio)
             criterion.update(model, optimizer)
             loss = criterion(outputs, mixed_targets, inputs, targets)
         loss.retain_grad()
@@ -174,7 +175,8 @@ def valid_epoch(pbar, net):
             with torch.cuda.amp.autocast():
 
                 if args.validonadv == True:
-                    adv_inputs, outputs = fast_gradient_validation(model_fn=net, eps=8/255, x=inputs, y=None, norm=np.inf, criterion=criterion)
+                    adv_inputs, outputs = fast_gradient_validation(model_fn=net, eps=8/255, x=inputs, y=None,
+                                                                   norm=np.inf, criterion=criterion)
                     _, adv_predicted = net(adv_inputs).max(1)
                     adv_correct += adv_predicted.eq(targets).sum().item()
                 else:
@@ -254,19 +256,21 @@ if __name__ == '__main__':
     Traintracker = utils.TrainTracking(args.dataset, args.modeltype, args.lrschedule, args.experiment, args.run,
                             args.validonc, args.validonadv, args.swa)
 
-    # Calculate steps and epochs
-    total_steps = utils.calculate_steps(args.dataset, args.batchsize, args.epochs, args.warmupepochs, args.validontest)
-    start_epoch, end_epoch = 0, args.epochs
+    start_epoch, end_epoch = 0, args.epochs + args.warmupepochs
 
     # Resume from checkpoint
     if args.resume == True:
         start_epoch, model, swa_model, optimizer, scheduler, swa_scheduler = Checkpointer.load_model(model, swa_model,
                                                                     optimizer, scheduler, swa_scheduler, 'standard')
         Traintracker.load_learning_curves()
-        print('\nResuming from checkpoint at epoch', start_epoch)
+        print('\nResuming from checkpoint after epoch', start_epoch)
+
+    # Calculate steps and epochs
+    total_steps, start_steps = utils.calculate_steps(args.dataset, args.batchsize, args.epochs, start_epoch, args.warmupepochs,
+                                        args.validontest, args.validonc, args.swa['apply'], args.swa['start_factor'])
 
     # Training loop
-    with tqdm(total=total_steps) as pbar:
+    with tqdm(total=total_steps, initial=start_steps) as pbar:
         with torch.autograd.set_detect_anomaly(False, check_nan=False): #this may resolve some Cuda/cuDNN errors.
             # check_nan=True increases 32bit precision train time by ~20% and causes errors due to nan values for mixed precision training.
             for epoch in range(start_epoch, end_epoch):
@@ -277,7 +281,7 @@ if __name__ == '__main__':
                 train_acc, train_loss = train_epoch(pbar)
                 valid_acc, valid_loss, valid_acc_robust, valid_acc_adv = valid_epoch(pbar, model)
 
-                if args.swa['apply'] == True and epoch > swa_start:
+                if args.swa['apply'] == True and (epoch + 1) > swa_start:
                     swa_model.update_parameters(model.module)
                     swa_scheduler.step()
                     valid_acc_swa, valid_loss_swa, valid_acc_robust_swa, valid_acc_adv_swa = valid_epoch(pbar, swa_model)
@@ -305,8 +309,6 @@ if __name__ == '__main__':
             trainloader = SWA_Loader.get_swa_dataloader()
         torch.optim.swa_utils.update_bn(trainloader, swa_model, device)
         model = swa_model
-    else:
-        model = model.module
 
     Checkpointer.save_final_model(model, optimizer, scheduler, end_epoch)
     Traintracker.print_results()

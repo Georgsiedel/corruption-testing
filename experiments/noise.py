@@ -13,8 +13,74 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 from experiments.data import normalization_values
 from experiments.utils import plot_images
 
+def random_erasing_style_mask(batch, noise_patch_lower_scale=0.3, noise_patch_upper_scale=1.0, ratio=[0.3, 3.3]):
+        """Get image mask for Patched Noise. Rectangle fully inside the image, as in RandomErasing
+        (https://github.com/gatheluck/PatchGaussian/blob/master/patch_gaussian.py)
+        Args:
+            batch (Tensor): batch of images to be masked.
+            noise_patch_lower_scale (sequence): Lower bound for range of proportion of masked area against input image. Upper bound is 1.0
+            ratio (sequence): range of aspect ratio of masked area.
+        """
+
+        if noise_patch_lower_scale == 1.0 and noise_patch_upper_scale == 1.0:
+            return torch.ones(batch.size(), dtype=torch.bool, device=device)
+
+        img_c, img_h, img_w = batch.shape[-3], batch.shape[-2], batch.shape[-1]
+        area = img_h * img_w
+
+        log_ratio = torch.log(torch.tensor(ratio))
+
+        patched_area = area * torch.empty(1).uniform_(noise_patch_lower_scale, noise_patch_upper_scale).item()
+        aspect_ratio = torch.exp(torch.empty(1).uniform_(log_ratio[0], log_ratio[1])).item()
+
+        h = int(round(math.sqrt(patched_area * aspect_ratio)))
+        w = int(round(math.sqrt(patched_area / aspect_ratio)))
+        if h > img_h:
+            h = img_h
+            w = int(round(img_w * patched_area / area)) #reset patched area ratio when patch needs to be cropped due to aspect ratio
+        if w > img_w:
+            w = img_w
+            h = int(round(img_h * patched_area / area)) #reset patched area ratio when patch needs to be cropped due to aspect ratio
+        i = torch.randint(0, img_h - h + 1, size=(1,)).item()
+        j = torch.randint(0, img_w - w + 1, size=(1,)).item()
+        mask = torch.zeros(batch.size(), dtype=torch.bool, device=device)
+        mask[:,:,i:i + h, j:j + w] = True
+
+        return mask
+
+def patch_gaussian_style_patch_mask(im_size: int, window_size: int):
+    """
+    Get image mask for Patched Noise. Square with center somewhere in the image, as in Patch Gaussian.
+    Torch implementation from here: https://github.com/gatheluck/PatchGaussian/blob/master/patch_gaussian.py
+    Args:
+    - im_size: size of image
+    - window_size: size of window. if -1, return full size mask
+    """
+    assert im_size >= 1
+    assert (1 <= window_size) or (window_size == -1)
+
+    # if window_size == -1, return all True mask.
+    if window_size == -1:
+        return torch.ones(im_size, im_size, dtype=torch.bool)
+
+    mask = torch.zeros(im_size, im_size, dtype=torch.bool)  # all elements are False
+
+    # sample window center. if window size is odd, sample from pixel position. if even, sample from grid position.
+    window_center_h = random.randrange(0, im_size) if window_size % 2 == 1 else random.randrange(0, im_size + 1)
+    window_center_w = random.randrange(0, im_size) if window_size % 2 == 1 else random.randrange(0, im_size + 1)
+
+    for idx_h in range(window_size):
+        for idx_w in range(window_size):
+            h = window_center_h - math.floor(window_size / 2) + idx_h
+            w = window_center_w - math.floor(window_size / 2) + idx_w
+
+            if (0 <= h < im_size) and (0 <= w < im_size):
+                mask[h, w] = True
+
+    return mask
+
 def apply_noise_add_and_mult(batch, minibatchsize, corruptions, normalized, dataset,
-                        manifold=False, manifold_factor=1, noise_sparsity=0.0, noise_patch_lower_scale=1.0):
+                        manifold=False, manifold_factor=1, noise_sparsity=0.0, noise_patch_scale={'lower': 0.3, 'upper': 1.0}):
 
     if corruptions is None:
         return batch
@@ -49,7 +115,7 @@ def apply_noise_add_and_mult(batch, minibatchsize, corruptions, normalized, data
             minibatch = sample_lp_corr_batch_inputspace(corruption['noise_type'], epsilon, minibatch,
                                             corruption['sphere'], mean, std, sparsity, multiplicative=multiplicative)
 
-        mask = get_image_mask(minibatch, noise_patch_lower_scale = noise_patch_lower_scale, ratio = [0.5, 2.0])
+        mask = random_erasing_style_mask(minibatch, noise_patch_scale = noise_patch_scale, ratio = [0.5, 2.0])
         minibatch = torch.where(mask, minibatch, clean)
         new_batches.append(minibatch)
 
@@ -155,41 +221,8 @@ def _noise(x, add_noise_level=0.0, mult_noise_level=0.0, sparse_level=0.0):
 
     return mult_noise * x + add_noise
 
-def get_image_mask(batch, noise_patch_lower_scale=1.0, ratio=[0.3, 3.3]):
-        """Get image mask for Patched Noise (see e.g. Patch Gaussian paper).
-        Args:
-            batch (Tensor): batch of images to be masked.
-            noise_patch_lower_scale (sequence): Lower bound for range of proportion of masked area against input image. Upper bound is 1.0
-            ratio (sequence): range of aspect ratio of masked area.
-        """
-        if noise_patch_lower_scale == 1.0:
-            return torch.ones(batch.size(), dtype=torch.bool, device=device)
-
-        img_c, img_h, img_w = batch.shape[-3], batch.shape[-2], batch.shape[-1]
-        area = img_h * img_w
-
-        log_ratio = torch.log(torch.tensor(ratio))
-
-        patched_area = area * torch.empty(1).uniform_(noise_patch_lower_scale, 1.0).item()
-        aspect_ratio = torch.exp(torch.empty(1).uniform_(log_ratio[0], log_ratio[1])).item()
-
-        h = int(round(math.sqrt(patched_area * aspect_ratio)))
-        w = int(round(math.sqrt(patched_area / aspect_ratio)))
-        if h > img_h:
-            h = img_h
-            w = int(round(img_w * patched_area / area)) #reset patched area ratio when patch needs to be cropped due to aspect ratio
-        if w > img_w:
-            w = img_w
-            h = int(round(img_h * patched_area / area)) #reset patched area ratio when patch needs to be cropped due to aspect ratio
-        i = torch.randint(0, img_h - h + 1, size=(1,)).item()
-        j = torch.randint(0, img_w - w + 1, size=(1,)).item()
-        mask = torch.zeros(batch.size(), dtype=torch.bool, device=device)
-        mask[:,:,i:i + h, j:j + w] = True
-
-        return mask
-
-def apply_noise(batch, minibatchsize, corruptions, concurrent_combinations, normalized, dataset,
-                        manifold=False, manifold_factor=1, noise_sparsity=0.0, noise_patch_lower_scale=1.0):
+def apply_noise(batch, minibatchsize, corruptions, concurrent_combinations, normalized, dataset, manifold=False,
+                manifold_factor=1, noise_sparsity=0.0, noise_patch_lower_scale=0.3, noise_patch_upper_scale=1.0):
 
     if corruptions is None:
         return batch
@@ -233,7 +266,8 @@ def apply_noise(batch, minibatchsize, corruptions, concurrent_combinations, norm
             sparsity = random.random() * noise_sparsity
             noisy_minibatch = sample_lp_corr_batch(corruption['noise_type'], epsilon, minibatch, corruption['sphere'], mean, std, manifold, sparsity)
 
-        mask = get_image_mask(minibatch, noise_patch_lower_scale = noise_patch_lower_scale, ratio = [0.3, 3.3])
+        mask = random_erasing_style_mask(minibatch, noise_patch_lower_scale=noise_patch_lower_scale,
+                                         noise_patch_upper_scale=noise_patch_upper_scale, ratio = [0.3, 3.3])
         final_minibatch = torch.where(mask, noisy_minibatch, minibatch)
         minibatches[id] = final_minibatch
 
@@ -250,7 +284,7 @@ def sample_lp_corr_batch(noise_type, epsilon, batch, density_distribution_max, m
                 sign = np.where(rand < 0.5, -1, 1)
                 corruption = torch.from_numpy(sign * epsilon)
             else: #sample uniformly inside the norm ball
-                corruption = (torch.rand(batch.shape, dtype=torch.float16, device=device) - 0.5) * 2 / epsilon
+                corruption = (torch.rand(batch.shape, dtype=torch.float16, device=device) - 0.5) * 2 * epsilon
         elif noise_type == 'gaussian': #note that this has no option for density_distribution=max
             corruption = torch.randn(size=batch.shape, dtype=torch.float16, device=device) * epsilon
         elif noise_type == 'uniform-l0-impulse':
@@ -340,7 +374,7 @@ def sample_lp_corr_img(noise_type, epsilon, img, density_distribution_max):
                 random_numbers = torch.randint(2, size=img.size(), dtype=torch.float16).to(device)
 
             else:
-                random_numbers = torch.rand(batch.shape, dtype=torch.float16, device=device)
+                random_numbers = torch.rand(img.shape, dtype=torch.float16, device=device)
             img_corr = torch.where(mask, random_numbers, img)
             return img_corr
         elif 'uniform-l' in noise_type:  #Calafiore1998: Uniform Sample Generation in lp Balls for Probabilistic Robustness Analysis

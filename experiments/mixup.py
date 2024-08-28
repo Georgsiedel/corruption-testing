@@ -64,7 +64,8 @@ class RandomMixup(torch.nn.Module):
 
         lambda_param = np.random.beta(self.alpha, self.alpha) if self.alpha > 0.0 else 1.0
 
-        #Here, we do mixup and cutmix separately for original and for generated images to not mix up different confidences
+        #Here, we do mixup and cutmix separately for original and for generated images to not mix up different
+        #confidence levels for original and generated images respectively
         q = int(batch.shape[0] / (robust_samples+1))
         gen = int(q * self.generated_ratio)
         orig = q - gen
@@ -72,9 +73,9 @@ class RandomMixup(torch.nn.Module):
         index_orig = torch.randperm(orig).cuda()
         for i in range(robust_samples+1):
             batch[q*i:q*i+orig] = lambda_param * batch[q*i:q*i+orig] + (1 - lambda_param) * batch[q*i:q*i+orig][index_orig]
-            batch[q*i+orig:q*(i+1)] = lambda_param * batch[q*i+orig:q*(i+1)] + (1 - lambda_param) * batch[q*i+orig:q*(i+1)][index_gen]
+            #batch[q*i+orig:q*(i+1)] = lambda_param * batch[q*i+orig:q*(i+1)] + (1 - lambda_param) * batch[q*i+orig:q*(i+1)][index_gen]
         target[:orig] = lambda_param * target[:orig] + (1 - lambda_param) * target[:orig][index_orig]
-        target[orig:] = lambda_param * target[orig:] + (1 - lambda_param) * target[orig:][index_gen]
+        #target[orig:] = lambda_param * target[orig:] + (1 - lambda_param) * target[orig:][index_gen]
 
         return batch, target
 
@@ -171,9 +172,9 @@ class RandomCutmix(torch.nn.Module):
         index_orig = torch.randperm(orig).cuda()
         for i in range(robust_samples+1):
             batch[q*i:q*i+orig, :, y1:y2, x1:x2] = batch[q*i:q*i+orig, :, y1:y2, x1:x2][index_orig]
-            batch[q*i+orig:q*(i+1), :, y1:y2, x1:x2] = batch[q*i+orig:q*(i+1), :, y1:y2, x1:x2][index_gen]
+            #batch[q*i+orig:q*(i+1), :, y1:y2, x1:x2] = batch[q*i+orig:q*(i+1), :, y1:y2, x1:x2][index_gen]
         target[:orig] = lambda_param * target[:orig] + (1 - lambda_param) * target[:orig][index_orig]
-        target[orig:] = lambda_param * target[orig:] + (1 - lambda_param) * target[orig:][index_gen]
+        #target[orig:] = lambda_param * target[orig:] + (1 - lambda_param) * target[orig:][index_gen]
 
         return batch, target
 
@@ -194,23 +195,23 @@ def mixup_process(inputs, targets, robust_samples, num_classes, mixup_alpha, mix
     #if manifold==True and (mixup_p > 0.0 or cutmix_p > 0.0):
     #    mixupcutmix = RandomMixup(num_classes, p=mixup_p, alpha=mixup_alpha, inplace=inplace)
     #    inputs, targets = mixupcutmix(inputs, targets, robust_samples)
-    if (cutmix_alpha or cutmix_p) == 0 and (mixup_alpha or mixup_p) == 0:
-        return inputs, targets
-    else:
-        total_probability = cutmix_p + mixup_p
-        if total_probability > 1:
-            cutmix_p /= total_probability
-            mixup_p /= total_probability
 
-        random_number = random.uniform(0, 1)
+    total_probability = cutmix_p + mixup_p
+    if total_probability > 1:
+        cutmix_p /= total_probability
+        mixup_p /= total_probability
 
-        if random_number < cutmix_p:
-            mixupcutmix = RandomCutmix(num_classes, p=1.0, alpha=cutmix_alpha, generated_ratio=generated_ratio, inplace=inplace)
-            inputs, targets = mixupcutmix(inputs, targets, robust_samples)
-        elif random_number < cutmix_p + mixup_p:
-            mixupcutmix = RandomMixup(num_classes, p=1.0, alpha=mixup_alpha, generated_ratio=generated_ratio, inplace=inplace)
-            inputs, targets = mixupcutmix(inputs, targets, robust_samples)
-        else:
+    random_number = random.uniform(0, 1)
+
+    if random_number < cutmix_p:
+        if cutmix_alpha == 0.0:
             return inputs, targets
+        mixupcutmix = RandomCutmix(num_classes, p=1.0, alpha=cutmix_alpha, generated_ratio=generated_ratio, inplace=inplace)
+        inputs, targets = mixupcutmix(inputs, targets, robust_samples)
+    elif random_number < cutmix_p + mixup_p:
+        if mixup_alpha == 0.0:
+            return inputs, targets
+        mixupcutmix = RandomMixup(num_classes, p=1.0, alpha=mixup_alpha, generated_ratio=generated_ratio, inplace=inplace)
+        inputs, targets = mixupcutmix(inputs, targets, robust_samples)
 
     return inputs, targets

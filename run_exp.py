@@ -7,7 +7,7 @@ if __name__ == '__main__':
     os.environ["CUDA_LAUNCH_BLOCKING"] = "1" #prevents "CUDA error: unspecified launch failure" and is recommended for some illegal memory access errors #increases train time by ~5-15%
     #os.environ["CUDA_VISIBLE_DEVICES"] = "1" #this blocks the spawn of multiple workers
 
-    for experiment in [12,13,9,10,11]:
+    for experiment in [6,9,6,12,6,12,6,12]:
 
         configname = (f'experiments.configs.config{experiment}')
         config = importlib.import_module(configname)
@@ -15,7 +15,7 @@ if __name__ == '__main__':
         print('Starting experiment #',experiment, 'on', config.dataset, 'dataset')
         runs = 1
 
-        if experiment in [9,10,11,12,13]:
+        if experiment in [27,8,9,6,12]:
             resume = True
         else:
             resume = False
@@ -40,8 +40,8 @@ if __name__ == '__main__':
                        f"--RandomEraseProbability={config.RandomEraseProbability} --warmupepochs={config.warmupepochs}" \
                        f" --normalize={config.normalize} --pixel_factor={config.pixel_factor} --minibatchsize=" \
                        f"{config.minibatchsize} --validonc={config.validonc} --validonadv={config.validonadv} --swa=" \
-                       f"\"{config.swa}\" --noise_sparsity={config.noise_sparsity} --noise_patch_lower_scale=" \
-                       f"{config.noise_patch_lower_scale} --generated_ratio={config.generated_ratio} "
+                       f"\"{config.swa}\" --noise_sparsity={config.noise_sparsity} --noise_patch_scale=" \
+                       f"\"{config.noise_patch_scale}\" --generated_ratio={config.generated_ratio} "
                 os.system(cmd0)
             else:
                 for id, (train_corruption) in enumerate(config.train_corruptions):
@@ -63,8 +63,8 @@ if __name__ == '__main__':
                            f"--RandomEraseProbability={config.RandomEraseProbability} --warmupepochs={config.warmupepochs}" \
                            f" --normalize={config.normalize} --pixel_factor={config.pixel_factor} --minibatchsize=" \
                            f"{config.minibatchsize} --validonc={config.validonc} --validonadv={config.validonadv} --swa=" \
-                           f"\"{config.swa}\" --noise_sparsity={config.noise_sparsity} --noise_patch_lower_scale=" \
-                           f"{config.noise_patch_lower_scale} --generated_ratio={config.generated_ratio} "
+                           f"\"{config.swa}\" --noise_sparsity={config.noise_sparsity} --noise_patch_scale=" \
+                           f"\"{config.noise_patch_scale}\" --generated_ratio={config.generated_ratio} "
                     os.system(cmd0)
 
         # Calculate accuracy and robust accuracy, evaluating each trained network on each corruption
@@ -78,6 +78,6 @@ if __name__ == '__main__':
                         config.resize, config.combine_test_corruptions, 0, config.normalize,
                         config.pixel_factor, config.test_on_c, config.calculate_adv_distance, config.adv_distance_params,
                         config.calculate_autoattack_robustness, config.autoattack_params, config.combine_train_corruptions)
-        if experiment in [9,10,11,12,13]:
+        if experiment in [27,8,9]:
             os.system(cmdeval)
 

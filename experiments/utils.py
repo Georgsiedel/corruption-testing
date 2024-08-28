@@ -31,7 +31,9 @@ class str2dictAction(argparse.Action):
 
         setattr(namespace, self.dest, dictionary)
 
-def plot_images(images, corrupted_images, number):
+def plot_images(images, corrupted_images, number, mean, std):
+    images = images * std + mean
+    corrupted_images = corrupted_images * std + mean
     fig, axs = plt.subplots(number, 2)
     images, corrupted_images = images.cpu(), corrupted_images.cpu()
     for i in range(number):
@@ -46,22 +48,49 @@ def plot_images(images, corrupted_images, number):
     #return fig
     plt.show()
 
-def calculate_steps(dataset, batchsize, epochs, warmupepochs, validontest):
+def calculate_steps(dataset, batchsize, epochs, start_epoch, warmupepochs, validontest, validonc, swa, swa_start_factor):
     #+0.5 is a way of rounding up to account for the last partial batch in every epoch
     if dataset == 'ImageNet':
-        steps = round(1281167/batchsize + 0.5) * (epochs + warmupepochs)
         if validontest == True:
-            steps += (round(50000/batchsize + 0.5) * (epochs + warmupepochs))
-    if dataset == 'TinyImageNet':
-        steps = round(100000/batchsize + 0.5) * (epochs + warmupepochs)
+            trainsteps_per_epoch = round(1281167 / batchsize + 0.5)
+            validsteps_per_epoch = round(50000 / batchsize + 0.5)
+        else:
+            trainsteps_per_epoch = round(0.8 * 1281167 / batchsize + 0.5)
+            validsteps_per_epoch = round(0.2 * 1281167 / batchsize + 0.5)
+    elif dataset == 'TinyImageNet':
         if validontest == True:
-            steps += (round(10000/batchsize + 0.5) * (epochs + warmupepochs))
+            trainsteps_per_epoch = round(100000 / batchsize + 0.5)
+            validsteps_per_epoch = round(10000 / batchsize + 0.5)
+        else:
+            trainsteps_per_epoch = round(0.8 * 100000 / batchsize + 0.5)
+            validsteps_per_epoch = round(0.2 * 100000 / batchsize + 0.5)
     elif dataset == 'CIFAR10' or dataset == 'CIFAR100':
-        steps = round(50000 / batchsize + 0.5) * (epochs + warmupepochs)
         if validontest == True:
-            steps += (round(10000/batchsize + 0.5) * (epochs + warmupepochs))
-    total_steps = int(steps)
-    return total_steps
+            trainsteps_per_epoch = round(50000 / batchsize + 0.5)
+            validsteps_per_epoch = round(10000 / batchsize + 0.5)
+        else:
+            trainsteps_per_epoch = round(0.8 * 50000 / batchsize + 0.5)
+            validsteps_per_epoch = round(0.2 * 50000 / batchsize + 0.5)
+
+    if validonc == True:
+        validsteps_per_epoch += 1
+
+    if swa == True:
+        total_validsteps = validsteps_per_epoch * int((2-swa_start_factor) * epochs) + warmupepochs
+    else:
+        total_validsteps = validsteps_per_epoch * (epochs + warmupepochs)
+    total_trainsteps = trainsteps_per_epoch * (epochs + warmupepochs)
+
+    if swa == True:
+        started_swa_epochs = start_epoch - warmupepochs - int(swa_start_factor * epochs) if start_epoch - warmupepochs - int(swa_start_factor * epochs) > 0 else 0
+        start_validsteps = validsteps_per_epoch * (start_epoch + started_swa_epochs)
+    else:
+        start_validsteps = validsteps_per_epoch * (start_epoch)
+    start_trainsteps = trainsteps_per_epoch * (start_epoch + 1)
+
+    total_steps = int(total_trainsteps+total_validsteps)
+    start_steps = int(start_trainsteps+start_validsteps)
+    return total_steps, start_steps
 
 class Checkpoint:
     """Early stops the training if validation loss doesn't improve after a given patience.
@@ -131,10 +160,13 @@ class Checkpoint:
         else:
             print('only best_checkpoint or checkpoint can be loaded')
 
-        swa_model.load_state_dict(checkpoint['swa_model_state_dict'], strict=True)
-        swa_scheduler.load_state_dict(checkpoint['swa_scheduler_state_dict'])
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+
+        if swa_model != None:
+            swa_model.load_state_dict(checkpoint['swa_model_state_dict'], strict=True)
+            swa_scheduler.load_state_dict(checkpoint['swa_scheduler_state_dict'])
+
         return start_epoch, model, swa_model, optimizer, scheduler, swa_scheduler
 
     def save_checkpoint(self, model, swa_model, optimizer, scheduler, swa_scheduler, epoch):
@@ -265,10 +297,18 @@ class TrainTracking:
         if self.validonadv == True:
             plt.plot(x, self.valid_accs_adv, label='Adversarial Validation Accuracy')
         if self.swa['apply'] == True:
-            plt.plot(x, self.valid_accs_swa, label='SWA Validation Accuracy')
-            plt.plot(x, self.valid_accs_robust_swa, label='SWA Robust Validation Accuracy')
-            plt.plot(x, self.valid_accs_adv_swa, label='SWA Adversarial Validation Accuracy')
-        plt.title('Training and Validation Accuracy')
+            swa_diff = [self.valid_accs_swa[i] if self.valid_accs[i] != self.valid_accs_swa[i] else None for i in
+                        range(len(self.valid_accs))]
+            plt.plot(x, swa_diff, label='SWA Validation Accuracy')
+            if self.validonc == True:
+                swa_robust_diff = [self.valid_accs_robust_swa[i] if self.valid_accs_robust[i] != self.valid_accs_robust_swa[i]
+                            else None for i in range(len(self.valid_accs_robust))]
+                plt.plot(x, swa_robust_diff, label='SWA Robust Validation Accuracy')
+            if self.validonadv == True:
+                swa_adv_diff = [self.valid_accs_adv_swa[i] if self.valid_accs_adv[i] != self.valid_accs_adv_swa[i]
+                            else None for i in range(len(self.valid_accs_adv))]
+                plt.plot(x, swa_adv_diff, label='SWA Adversarial Validation Accuracy')
+        plt.title('Learning Curves')
         plt.xlabel('Epochs')
         plt.ylabel('Accuracy')
         plt.xticks(np.linspace(1, len(self.train_accs), num=10, dtype=int))
@@ -281,14 +321,14 @@ class TrainTracking:
                         f'./results/{self.dataset}/{self.modeltype}/config{self.experiment}.py')
 
     def print_results(self):
-        print("Maximum validation accuracy of", max(self.valid_accs_swa), "achieved after",
-              np.argmax(self.valid_accs_swa) + 1, "epochs; ")
+        print("Maximum (non-SWA) validation accuracy of", max(self.valid_accs), "achieved after",
+              np.argmax(self.valid_accs) + 1, "epochs; ")
         if self.validonc:
-            print("Maximum robust validation accuracy of", max(self.valid_accs_robust_swa), "achieved after",
-                  np.argmax(self.valid_accs_robust_swa) + 1, "epochs; ")
+            print("Maximum (non-SWA) robust validation accuracy of", max(self.valid_accs_robust), "achieved after",
+                  np.argmax(self.valid_accs_robust) + 1, "epochs; ")
         if self.validonadv:
-            print("Maximum adversarial validation accuracy of", max(self.valid_accs_adv_swa), "achieved after",
-                  np.argmax(self.valid_accs_adv_swa) + 1, "epochs; ")
+            print("Maximum (non-SWA) adversarial validation accuracy of", max(self.valid_accs_adv), "achieved after",
+                  np.argmax(self.valid_accs_adv) + 1, "epochs; ")
 
 class TestTracking:
     def __init__(self, dataset, modeltype, experiment, runs, combine_train_corruptions, combine_test_corruptions,

@@ -58,69 +58,6 @@ class CustomDataset(Dataset):
 
         return image, label
 
-class CombinedDataset(Dataset):
-    def __init__(self, original_dataset, generated_dataset, target_size, generated_ratio=0.0, transform=None):
-        self.original_dataset = original_dataset
-        self.generated_dataset = generated_dataset
-        self.generated_ratio = generated_ratio
-        self.transform = transform  # Save the transform passed to the constructor
-        self.target_size = target_size
-
-        # Prepare lists for combined data
-        self.images = [None] * self.target_size
-        self.labels = [None] * self.target_size
-        self.sources = [None] * self.target_size
-
-        torch.manual_seed(5)
-        np.random.seed(5)
-        random.seed(5)
-
-        if self.generated_dataset == None or self.generated_ratio == 0.0:
-            self.images, self.labels = zip(*self.original_dataset)
-            if isinstance(self.images[0], torch.Tensor):
-                self.images = TF.to_pil_image(self.images)
-            self.sources = [True] * len(self.original_dataset)
-        else:
-            self.num_generated = int(self.target_size * self.generated_ratio)
-            self.num_original = self.target_size - self.num_generated
-            # Create a single permutation for the whole epoch
-            original_perm = torch.randperm(len(self.original_dataset))
-            generated_perm = torch.randperm(len(self.generated_dataset['image']))
-
-            original_indices = original_perm[0:self.num_original]
-            generated_indices = generated_perm[0:self.num_generated]
-            generated_images = list(map(Image.fromarray, self.generated_dataset['image'][generated_indices]))
-            generated_labels = self.generated_dataset['label'][generated_indices]
-
-            original_subset = Subset(self.original_dataset, original_indices)
-            original_images, original_labels = zip(*original_subset)
-            if isinstance(original_images[0], torch.Tensor):
-                original_images = TF.to_pil_image(original_images)
-
-            # Transform and append original data
-            self.images[:self.num_original] = original_images
-            self.labels[:self.num_original] = original_labels
-            self.sources[:self.num_original] = [True] * self.num_original
-
-            # Append NPZ data
-            self.images[self.num_original:self.target_size] = generated_images
-            self.labels[self.num_original:self.target_size] = generated_labels
-            self.sources[self.num_original:self.target_size] = [False] * self.num_generated
-
-    def __len__(self):
-        return len(self.labels)
-
-    def __getitem__(self, idx):
-        image = self.images[idx]
-        label = self.labels[idx]
-        source = self.sources[idx]
-
-        # Apply the transformation if it exists
-        if self.transform:
-            image = self.transform(image)
-
-        return image, label, source
-
 class BalancedRatioSampler(Sampler):
     def __init__(self, dataset, generated_ratio, batch_size):
         super(BalancedRatioSampler, self).__init__()
@@ -210,7 +147,7 @@ class DataLoading():
         r256 = transforms.Resize(256, antialias=True)
         c224 = transforms.CenterCrop(224)
         rrc224 = transforms.RandomResizedCrop(224, antialias=True)
-        re = transforms.RandomErasing(p=RandomEraseProbability)  # , value='random')
+        re = transforms.RandomErasing(p=RandomEraseProbability, scale=(0.02, 0.4), value='random')
 
         # transformations of validation/test set and necessary transformations for training
         # always done (even for clean images while training, when using robust loss)
