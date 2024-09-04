@@ -7,7 +7,7 @@ if __name__ == '__main__':
     os.environ["CUDA_LAUNCH_BLOCKING"] = "1" #prevents "CUDA error: unspecified launch failure" and is recommended for some illegal memory access errors #increases train time by ~5-15%
     #os.environ["CUDA_VISIBLE_DEVICES"] = "1" #this blocks the spawn of multiple workers
 
-    for experiment in [6,9,6,12,6,12,6,12]:
+    for experiment in [15,15,6,4,15,15]:
 
         configname = (f'experiments.configs.config{experiment}')
         config = importlib.import_module(configname)
@@ -15,7 +15,7 @@ if __name__ == '__main__':
         print('Starting experiment #',experiment, 'on', config.dataset, 'dataset')
         runs = 1
 
-        if experiment in [27,8,9,6,12]:
+        if experiment in [15,6,4]:
             resume = True
         else:
             resume = False
@@ -68,16 +68,16 @@ if __name__ == '__main__':
                     os.system(cmd0)
 
         # Calculate accuracy and robust accuracy, evaluating each trained network on each corruption
-        print('Beginning metric evaluation')
 
-        cmdeval = "python experiments/eval.py --resume={} --experiment={} --runs={} --batchsize={} --dataset={} " \
-                "--modeltype={} --modelparams=\"{}\" --resize={} --combine_test_corruptions={} --number_workers={} " \
-                "--normalize={} --pixel_factor={} --test_on_c={} --calculate_adv_distance={} --adv_distance_params=\"{}\" " \
-                "--calculate_autoattack_robustness={} --autoattack_params=\"{}\" --combine_train_corruptions={} " \
-                .format(resume, experiment, runs, 1024, config.dataset, config.modeltype, config.modelparams,
-                        config.resize, config.combine_test_corruptions, 0, config.normalize,
-                        config.pixel_factor, config.test_on_c, config.calculate_adv_distance, config.adv_distance_params,
-                        config.calculate_autoattack_robustness, config.autoattack_params, config.combine_train_corruptions)
-        if experiment in [27,8,9]:
+        if experiment in []:
+            print('Beginning metric evaluation')
+            cmdeval = "python experiments/eval.py --resume={} --experiment={} --runs={} --batchsize={} --dataset={} " \
+                    "--modeltype={} --modelparams=\"{}\" --resize={} --combine_test_corruptions={} --number_workers={} " \
+                    "--normalize={} --pixel_factor={} --test_on_c={} --calculate_adv_distance={} --adv_distance_params=\"{}\" " \
+                    "--calculate_autoattack_robustness={} --autoattack_params=\"{}\" --combine_train_corruptions={} " \
+                    .format(resume, experiment, runs, 1024, config.dataset, config.modeltype, config.modelparams,
+                            config.resize, config.combine_test_corruptions, 0, config.normalize,
+                            config.pixel_factor, config.test_on_c, config.calculate_adv_distance, config.adv_distance_params,
+                            config.calculate_autoattack_robustness, config.autoattack_params, config.combine_train_corruptions)
             os.system(cmdeval)
 

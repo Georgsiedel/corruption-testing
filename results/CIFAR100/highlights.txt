@@ -1,0 +1,19 @@
+"path"
+accuracy/robust-accuracy(19)/robust-accuracy(15)
+
+WideResNet28-4: 
+
+"\CIFAR100\WideResNet_28_4\01_NoisyMix in Manifold(0.5-0.5)\config2_CosineAnnealingWarmRestarts_combined_metrics_test_avg.csv" 
+81,92/72,84/72,33
+
+"\CIFAR100\WideResNet_28_4\10_no mixup, no manifold, with and without generated\config7_noJSD_with_generated_less_noisetypes_smallerpatch_1.0sparsity_0.3RE.py"
+82,84/73,18/72,44
+
+"CIFAR100\WideResNet_28_4\10_no mixup, no manifold, with and without generated\config27_withJSD_with_generated_swa0.9_less_noisetypes_nomanifoldL0_1.0sparsity.py"
+81,57/73,05/72,35
+
+"\CIFAR100\WideResNet_28_4\11_no mixup, with manifold, with and without generated\config7_metrics_test_avg.csv"
+83,30/73,13/72,31
+
+"\CIFAR100\WideResNet_28_4\11_no mixup, with manifold, with and without generated\config8_noJSD_with_generated_smallerpatch_1.0sparsity_0.3RE.py"
+83,27/73,11/72,28

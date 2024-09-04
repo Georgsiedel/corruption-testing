@@ -9,6 +9,7 @@ import torch
 from PIL import Image
 import torch.cuda.amp
 import torchvision.transforms as transforms
+import torchvision.transforms.v2 as transforms_v2
 import torchvision.transforms.functional as TF
 from sklearn.model_selection import train_test_split
 import torchvision
@@ -131,6 +132,53 @@ class AugmentedDataset(torch.utils.data.Dataset):
     def __len__(self):
         return len(self.labels)
 
+class RandomChoiceTransforms:
+    def __init__(self, transforms, p):
+        assert len(transforms) == len(p), "The number of transforms and probabilities must match."
+
+        self.transforms = transforms
+        self.p = p
+
+    def __call__(self, x):
+        choice = random.choices(self.transforms, self.p)[0]
+        return choice(x)
+
+class CustomTA_color(transforms_v2.TrivialAugmentWide):
+    _AUGMENTATION_SPACE = {
+    "Identity": (lambda num_bins, height, width: None, False),
+    #"ShearX": (lambda num_bins, height, width: torch.linspace(0.0, 0.99, num_bins), True),
+    #"ShearY": (lambda num_bins, height, width: torch.linspace(0.0, 0.99, num_bins), True),
+    #"TranslateX": (lambda num_bins, height, width: torch.linspace(0.0, 32.0, num_bins), True),
+    #"TranslateY": (lambda num_bins, height, width: torch.linspace(0.0, 32.0, num_bins), True),
+    #"Rotate": (lambda num_bins, height, width: torch.linspace(0.0, 135.0, num_bins), True),
+    "Brightness": (lambda num_bins, height, width: torch.linspace(0.0, 0.99, num_bins), True),
+    "Color": (lambda num_bins, height, width: torch.linspace(0.0, 0.99, num_bins), True),
+    "Contrast": (lambda num_bins, height, width: torch.linspace(0.0, 0.99, num_bins), True),
+    "Sharpness": (lambda num_bins, height, width: torch.linspace(0.0, 0.99, num_bins), True),
+    "Posterize": (lambda num_bins, height, width: (8 - (torch.arange(num_bins) / ((num_bins - 1) / 6))).round().int(), False),
+    "Solarize": (lambda num_bins, height, width: torch.linspace(1.0, 0.0, num_bins), False),
+    "AutoContrast": (lambda num_bins, height, width: None, False),
+    "Equalize": (lambda num_bins, height, width: None, False)
+    }
+
+class CustomTA_geometric(transforms_v2.TrivialAugmentWide):
+    _AUGMENTATION_SPACE = {
+    "Identity": (lambda num_bins, height, width: None, False),
+    "ShearX": (lambda num_bins, height, width: torch.linspace(0.0, 0.99, num_bins), True),
+    "ShearY": (lambda num_bins, height, width: torch.linspace(0.0, 0.99, num_bins), True),
+    "TranslateX": (lambda num_bins, height, width: torch.linspace(0.0, 32.0, num_bins), True),
+    "TranslateY": (lambda num_bins, height, width: torch.linspace(0.0, 32.0, num_bins), True),
+    "Rotate": (lambda num_bins, height, width: torch.linspace(0.0, 135.0, num_bins), True),
+    #"Brightness": (lambda num_bins, height, width: torch.linspace(0.0, 0.99, num_bins), True),
+    #"Color": (lambda num_bins, height, width: torch.linspace(0.0, 0.99, num_bins), True),
+    #"Contrast": (lambda num_bins, height, width: torch.linspace(0.0, 0.99, num_bins), True),
+    #"Sharpness": (lambda num_bins, height, width: torch.linspace(0.0, 0.99, num_bins), True),
+    #"Posterize": (lambda num_bins, height, width: (8 - (torch.arange(num_bins) / ((num_bins - 1) / 6))).round().int(), False),
+    #"Solarize": (lambda num_bins, height, width: torch.linspace(1.0, 0.0, num_bins), False),
+    #"AutoContrast": (lambda num_bins, height, width: None, False),
+    #"Equalize": (lambda num_bins, height, width: None, False)
+    }
+
 class DataLoading():
     def __init__(self, dataset, generated_ratio=0.0, resize = False):
         self.dataset = dataset
@@ -168,8 +216,31 @@ class DataLoading():
 
         # additional transforms with tensor transformation, Random Erasing after tensor transformation
         if aug_strat_check == True:
-            tf = getattr(transforms, train_aug_strat)
-            self.transforms_augmentation = transforms.Compose([tf(), self.transforms_preprocess, re])
+            if train_aug_strat == "TA+RE":
+                TAc = CustomTA_color()
+                TAg = CustomTA_geometric()
+                #tf = transforms.Compose([CustomTA_color(), CustomTA_geometric()])
+                tf = RandomChoiceTransforms([TAc, TAg, transforms.Compose([self.transforms_preprocess, transforms.RandomErasing(p=1.0, scale=(0.02, 0.4), value='random'), transforms.ToPILImage()]),
+                                            transforms.Compose([self.transforms_preprocess, transforms.RandomErasing(p=1.0, scale=(0.02, 0.4), value=0), transforms.ToPILImage()])],
+                                            [8,6,1,1])
+            elif train_aug_strat == "SequentialTA":
+                tf = transforms.Compose([CustomTA_color(), CustomTA_geometric(), self.transforms_preprocess, re, transforms.ToPILImage()])
+            elif train_aug_strat == "SequentialTA+RE":
+                tf = transforms.Compose([CustomTA_color(),
+                                         RandomChoiceTransforms([CustomTA_geometric(),
+                                                                 transforms.Compose(
+                                             [self.transforms_preprocess,
+                                              transforms.RandomErasing(p=1.0, scale=(0.02, 0.4), value='random'),
+                                              transforms.ToPILImage()]),
+                                                                transforms.Compose([
+                                              self.transforms_preprocess,
+                                              transforms.RandomErasing(p=1.0, scale=(0.02, 0.4), value=0),
+                                              transforms.ToPILImage()])],
+                                        [6, 1, 1])])
+            else:
+                tf = getattr(transforms_v2, train_aug_strat)()
+
+            self.transforms_augmentation = transforms.Compose([tf, self.transforms_preprocess])#, re])
         else:
             self.transforms_augmentation = transforms.Compose([self.transforms_preprocess, re])
 

@@ -48,8 +48,8 @@ robust_loss = False
 robust_lossparams = {'num_splits': 3, 'alpha': 12} #jsd if 3 splits, KL divergence if 2 splits
 mixup = {'alpha': 0.2, 'p': 0.0} #default alpha 0.2 #If both mixup and cutmix are >0, mixup or cutmix are selected by 0.5 chance
 cutmix = {'alpha': 1.0, 'p': 0.0} # default alpha 1.0 #If both mixup and cutmix are >0, mixup or cutmix are selected by 0.5 chance
-manifold = {'apply': False, 'noise_factor': 3}
-RandomEraseProbability = 0.5
+manifold = {'apply': True, 'noise_factor': 3}
+RandomEraseProbability = 0.1
 swa = {'apply': True, 'start_factor': 0.85, 'lr_factor': 0.2}
 
 #define train and test corruptions:
