@@ -321,7 +321,7 @@ class DataLoading():
             print('Dataset not loadable')
         self.num_classes = len(self.testset.classes)
 
-    def load_augmented_traindata(self, target_size, seed=42, transforms_generated = None, robust_samples=0):
+    def load_augmented_traindata(self, target_size, seed=0, transforms_generated = None, robust_samples=0):
 
         self.transforms_generated = transforms_generated
         self.robust_samples = robust_samples
@@ -435,13 +435,15 @@ class DataLoading():
 
         return self.trainloader, self.validationloader
 
-    def update_trainset(self, epoch):
-        if self.generated_ratio != 0.0:
+    def update_trainset(self, epoch, start_epoch):
+        if self.generated_ratio == 0.0 or epoch == 0 or epoch == start_epoch:
+            return self.trainloader
+        else:
             self.load_augmented_traindata(self.target_size, seed=epoch, transforms_generated=self.transforms_generated,
                                           robust_samples=self.robust_samples)
             self.trainloader = DataLoader(self.trainset, batch_sampler=self.CustomSampler, pin_memory=True,
                                           num_workers=self.number_workers)
-        return self.trainloader
+            return self.trainloader
 
 def normalization_values(batch, dataset, normalized, manifold=False, manifold_factor=1):
 
