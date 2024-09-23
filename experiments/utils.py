@@ -86,7 +86,7 @@ def calculate_steps(dataset, batchsize, epochs, start_epoch, warmupepochs, valid
         start_validsteps = validsteps_per_epoch * (start_epoch + started_swa_epochs)
     else:
         start_validsteps = validsteps_per_epoch * (start_epoch)
-    start_trainsteps = trainsteps_per_epoch * (start_epoch + 1)
+    start_trainsteps = trainsteps_per_epoch * start_epoch
 
     total_steps = int(total_trainsteps+total_validsteps)
     start_steps = int(start_trainsteps+start_validsteps)

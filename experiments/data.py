@@ -15,6 +15,7 @@ from sklearn.model_selection import train_test_split
 import torchvision
 from torch.utils.data import Subset, Dataset, ConcatDataset, RandomSampler, BatchSampler, Sampler, DataLoader
 import numpy as np
+import experiments.style_transfer as style_transfer
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 class SwaLoader():
@@ -145,7 +146,7 @@ class RandomChoiceTransforms:
 
 class CustomTA_color(transforms_v2.TrivialAugmentWide):
     _AUGMENTATION_SPACE = {
-    "Identity": (lambda num_bins, height, width: None, False),
+    #"Identity": (lambda num_bins, height, width: None, False),
     #"ShearX": (lambda num_bins, height, width: torch.linspace(0.0, 0.99, num_bins), True),
     #"ShearY": (lambda num_bins, height, width: torch.linspace(0.0, 0.99, num_bins), True),
     #"TranslateX": (lambda num_bins, height, width: torch.linspace(0.0, 32.0, num_bins), True),
@@ -216,16 +217,16 @@ class DataLoading():
 
         # additional transforms with tensor transformation, Random Erasing after tensor transformation
         if aug_strat_check == True:
-            if train_aug_strat == "TA+RE":
+            if train_aug_strat == "TAorRE":
                 TAc = CustomTA_color()
                 TAg = CustomTA_geometric()
                 #tf = transforms.Compose([CustomTA_color(), CustomTA_geometric()])
                 tf = RandomChoiceTransforms([TAc, TAg, transforms.Compose([self.transforms_preprocess, transforms.RandomErasing(p=1.0, scale=(0.02, 0.4), value='random'), transforms.ToPILImage()]),
                                             transforms.Compose([self.transforms_preprocess, transforms.RandomErasing(p=1.0, scale=(0.02, 0.4), value=0), transforms.ToPILImage()])],
-                                            [8,6,1,1])
-            elif train_aug_strat == "SequentialTA":
+                                            [0.4,0.3,0.15,0.15])
+            elif train_aug_strat == "TAc+TAg+RE":
                 tf = transforms.Compose([CustomTA_color(), CustomTA_geometric(), self.transforms_preprocess, re, transforms.ToPILImage()])
-            elif train_aug_strat == "SequentialTA+RE":
+            elif train_aug_strat == "TAc+TAgorRE":
                 tf = transforms.Compose([CustomTA_color(),
                                          RandomChoiceTransforms([CustomTA_geometric(),
                                                                  transforms.Compose(
@@ -237,6 +238,35 @@ class DataLoading():
                                               transforms.RandomErasing(p=1.0, scale=(0.02, 0.4), value=0),
                                               transforms.ToPILImage()])],
                                         [6, 1, 1])])
+            elif train_aug_strat == "TAorStyle":
+                TAc = CustomTA_color()
+                TAg = CustomTA_geometric()
+                vgg, decoder = style_transfer.load_models()
+                style_feats = style_transfer.load_feat_files()
+
+                Stylize = style_transfer.NSTTransform(style_feats, vgg, decoder, alpha_min=0.2, alpha_max=1.0, probability=0.9)
+
+                tf = transforms.Compose([RandomChoiceTransforms([TAc, TAg, Stylize], [8, 6, 14]),
+                                                                transforms.Compose([
+                                                            self.transforms_preprocess, re, transforms.ToPILImage()])])
+            elif train_aug_strat == "TAorStyleweaker":
+                TAc = CustomTA_color()
+                TAg = CustomTA_geometric()
+                vgg, decoder = style_transfer.load_models()
+                style_feats = style_transfer.load_feat_files()
+
+                Stylize = style_transfer.NSTTransform(style_feats, vgg, decoder, alpha_min=0.2, alpha_max=1.0, probability=0.8)
+
+                tf = transforms.Compose([RandomChoiceTransforms([TAc, TAg, Stylize], [8, 6, 5]),
+                                                                transforms.Compose([
+                                                            self.transforms_preprocess, re, transforms.ToPILImage()])])
+            elif train_aug_strat == "TAc+REorTAg":
+                TAc = CustomTA_color()
+                TAg = CustomTA_geometric()
+                tf = RandomChoiceTransforms([TAg,
+                    transforms.Compose([TAc, self.transforms_preprocess, transforms.RandomErasing(p=0.525, scale=(0.02, 0.4), value='random'),
+                     transforms.ToPILImage()])],
+                                            [6, 8])
             else:
                 tf = getattr(transforms_v2, train_aug_strat)()
 
@@ -299,9 +329,9 @@ class DataLoading():
         self.generated_dataset = np.load(f'./experiments/data/{self.dataset}-add-1m-dm.npz',
                                     mmap_mode='r') if self.generated_ratio > 0.0 else None
 
-        torch.manual_seed(seed)
-        np.random.seed(seed)
-        random.seed(seed)
+        #torch.manual_seed(seed)
+        #np.random.seed(seed)
+        #random.seed(seed)
 
         # Prepare lists for combined data
         images = [None] * self.target_size
