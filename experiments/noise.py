@@ -320,7 +320,7 @@ def sample_lp_corr_batch(noise_type, epsilon, batch, density_distribution_max, m
             lp = [float(x) for x in re.findall(r'-?\d+\.?\d*', noise_type)][0]
             u = dist.Gamma(1 / lp, 1).sample(img_corr.shape).to(device)
             u = u ** (1 / lp)
-            sign = torch.where(torch.rand(img_corr.shape, dtype=torch.float16, device=device) < 0.5, -1, 1)
+            sign = torch.sign(torch.rand(img_corr.shape, device=device) - 0.5)
             norm = torch.sum(abs(u) ** lp) ** (1 / lp)  # scalar, norm samples to lp-norm-sphere
             if density_distribution_max == True:
                 r = 1
