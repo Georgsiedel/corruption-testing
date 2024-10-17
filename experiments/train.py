@@ -1,3 +1,11 @@
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+module_path = os.path.abspath(os.path.dirname(__file__))
+
+if module_path not in sys.path:
+    sys.path.append(module_path)
+
 import argparse
 import importlib
 from multiprocessing import freeze_support
@@ -9,19 +17,20 @@ import torch.optim as optim
 from torch.optim.swa_utils import AveragedModel, SWALR
 import torchvision.models as torchmodels
 
-import experiments.data as data
-import experiments.utils as utils
-import experiments.losses as losses
-import experiments.models as low_dim_models
-from experiments.eval_corruptions import compute_c_corruptions
-from experiments.eval_adversarial import fast_gradient_validation
+import data
+import utils
+import losses
+import models as low_dim_models
+from eval_corruptions import compute_c_corruptions
+from eval_adversarial import fast_gradient_validation
 
 import torch.backends.cudnn as cudnn
 torch.cuda.empty_cache()
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 #torch.backends.cudnn.enabled = False #this may resolve some cuDNN errors, but increases training time by ~200%
 torch.cuda.set_device(0)
-cudnn.benchmark = False #this slightly speeds up 32bit precision training (5%)
+cudnn.benchmark = False #this slightly speeds up 32bit precision training (5%). False helps achieve reproducibility
+cudnn.deterministic = True
 
 parser = argparse.ArgumentParser(description='PyTorch Training with perturbations')
 parser.add_argument('--resume', type=utils.str2bool, nargs='?', const=False, default=False,
@@ -57,7 +66,8 @@ parser.add_argument('--resize', type=utils.str2bool, nargs='?', const=False, def
                     help='Resize a model to 224x224 pixels, standard for models like transformers.')
 parser.add_argument('--aug_strat_check', type=utils.str2bool, nargs='?', const=True, default=False,
                     help='Whether to use an auto-augmentation scheme')
-parser.add_argument('--train_aug_strat', default='TrivialAugmentWide', type=str, help='auto-augmentation scheme')
+parser.add_argument('--train_aug_strat_orig', default='TrivialAugmentWide', type=str, help='augmentation scheme')
+parser.add_argument('--train_aug_strat_gen', default='TrivialAugmentWide', type=str, help='augmentation scheme')
 parser.add_argument('--loss', default='CrossEntropyLoss', type=str, help='loss function to use, chosen from torch.nn loss functions')
 parser.add_argument('--lossparams', default={}, type=str, action=utils.str2dictAction, metavar='KEY=VALUE',
                     help='parameters for the standard loss function')
@@ -213,10 +223,10 @@ if __name__ == '__main__':
     lossparams = args.trades_lossparams | args.robust_lossparams | args.lossparams
     criterion = losses.Criterion(args.loss, trades_loss=args.trades_loss, robust_loss=args.robust_loss, **lossparams)
 
-    Dataloader = data.DataLoading(args.dataset, args.generated_ratio, args.resize)
-    Dataloader.create_transforms(args.aug_strat_check, args.train_aug_strat, args.RandomEraseProbability)
+    Dataloader = data.DataLoading(args.dataset, args.epochs, args.generated_ratio, args.resize, args.run)
+    Dataloader.create_transforms(args.aug_strat_check, args.train_aug_strat_orig, args.train_aug_strat_gen, args.RandomEraseProbability)
     Dataloader.load_base_data(args.validontest, args.run)
-    testsets_c = Dataloader.load_data_c(subset=args.validonc, subsetsize=200)
+    testsets_c = Dataloader.load_data_c(subset=args.validonc, subsetsize=100)
 
     # Construct model
     print(f'\nBuilding {args.modeltype} model with {args.modelparams} | Augmentation strategy: {args.aug_strat_check}'
@@ -263,8 +273,7 @@ if __name__ == '__main__':
 
     # load augmented trainset and Dataloader
     Dataloader.load_augmented_traindata(target_size=len(Dataloader.base_trainset),
-                                        seed=start_epoch,
-                                        transforms_generated=Dataloader.transforms_augmentation,
+                                        epoch=start_epoch,
                                         robust_samples=criterion.robust_samples)
     trainloader, validationloader = Dataloader.get_loader(args.batchsize, args.number_workers)
   

@@ -3,8 +3,8 @@ import numpy as np
 from torch.utils.data import DataLoader
 from torchmetrics.classification import MulticlassCalibrationError
 device = "cuda" if torch.cuda.is_available() else "cpu"
-from experiments.noise import apply_noise
-from experiments.utils import plot_images
+from noise import apply_noise
+from utils import plot_images
 
 def select_p_corruptions(testloader, model, test_corruptions, dataset, combine_test_corruptions):
     if combine_test_corruptions:  # combined p-norm corruption robust accuracy
@@ -52,8 +52,8 @@ def compute_c_corruptions(dataset, testsets_c, model, batchsize, num_classes, ev
         if eval_run == False:
             print(acc, f"% mean (avg. over 5 intensities) Accuracy on {dataset}-c corrupted data of type", corruption)
 
-    rmsce_c = np.average(np.asarray(rmsce_c_list))
     if eval_run == False:
+        rmsce_c = np.average(np.asarray(rmsce_c_list))
         print("Robust Accuracy C-all (19 corruptions): ", sum(accs_c[0:19]) / 19, "%,"
             "Robust Accuracy C-original (15 corruptions): ", sum(accs_c[0:15]) / 15, "%, "
             "Robust Accuracy C-bar (10 corruptions): ", sum(accs_c[19:29]) / 10, "%, "

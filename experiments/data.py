@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import random
 import time
 
@@ -15,8 +11,13 @@ from sklearn.model_selection import train_test_split
 import torchvision
 from torch.utils.data import Subset, Dataset, ConcatDataset, RandomSampler, BatchSampler, Sampler, DataLoader
 import numpy as np
-import experiments.style_transfer as style_transfer
+import style_transfer
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
+def seed_worker(worker_id):
+    worker_seed = torch.initial_seed() % 2 ** 32
+    np.random.seed(worker_seed)
+    random.seed(worker_seed)
 
 class SwaLoader():
     def __init__(self, trainloader, batchsize, robust_samples):
@@ -181,12 +182,14 @@ class CustomTA_geometric(transforms_v2.TrivialAugmentWide):
     }
 
 class DataLoading():
-    def __init__(self, dataset, generated_ratio=0.0, resize = False):
+    def __init__(self, dataset, epochs=200, generated_ratio=0.0, resize = False, run=0):
         self.dataset = dataset
         self.generated_ratio = generated_ratio
         self.resize = resize
+        self.run = run
+        self.epochs = epochs
 
-    def create_transforms(self, aug_strat_check, train_aug_strat, RandomEraseProbability=0.0):
+    def create_transforms(self, aug_strat_check, train_aug_strat_orig, train_aug_strat_gen, RandomEraseProbability=0.0):
         # list of all data transformations used
         t = transforms.ToTensor()
         c32 = transforms.RandomCrop(32, padding=4)
@@ -217,63 +220,73 @@ class DataLoading():
 
         # additional transforms with tensor transformation, Random Erasing after tensor transformation
         if aug_strat_check == True:
-            if train_aug_strat == "TAorRE":
-                TAc = CustomTA_color()
-                TAg = CustomTA_geometric()
-                #tf = transforms.Compose([CustomTA_color(), CustomTA_geometric()])
-                tf = RandomChoiceTransforms([TAc, TAg, transforms.Compose([self.transforms_preprocess, transforms.RandomErasing(p=1.0, scale=(0.02, 0.4), value='random'), transforms.ToPILImage()]),
-                                            transforms.Compose([self.transforms_preprocess, transforms.RandomErasing(p=1.0, scale=(0.02, 0.4), value=0), transforms.ToPILImage()])],
-                                            [0.4,0.3,0.15,0.15])
-            elif train_aug_strat == "TAc+TAg+RE":
-                tf = transforms.Compose([CustomTA_color(), CustomTA_geometric(), self.transforms_preprocess, re, transforms.ToPILImage()])
-            elif train_aug_strat == "TAc+TAgorRE":
-                tf = transforms.Compose([CustomTA_color(),
-                                         RandomChoiceTransforms([CustomTA_geometric(),
+
+            TAc = CustomTA_color()
+            TAg = CustomTA_geometric()
+
+            def stylization():
+                vgg, decoder = style_transfer.load_models()
+                style_feats = style_transfer.load_feat_files()
+
+                Stylize = style_transfer.NSTTransform(style_feats, vgg, decoder, alpha_min=0.2, alpha_max=1.0,
+                                                      probability=0.9)
+                return Stylize
+
+            def transform_not_found(train_aug_strat, dataset):
+                print('Training augmentation strategy', train_aug_strat, 'could not be found. Proceeding without '
+                                                                         'augmentation strategy for.', dataset, '.')
+                return transforms.Compose([self.transforms_preprocess, re])
+
+            transform_map = {
+                "TAorRE": RandomChoiceTransforms([transforms.Compose([TAc, self.transforms_preprocess]),
+                                                  transforms.Compose([TAg, self.transforms_preprocess]),
+                                                  transforms.Compose([self.transforms_preprocess, transforms.RandomErasing(p=1.0, scale=(0.02, 0.4), value='random')]),
+                                                  transforms.Compose([self.transforms_preprocess, transforms.RandomErasing(p=1.0, scale=(0.02, 0.4), value=0)])],
+                                            [0.4,0.3,0.15,0.15]),
+                "TAc+TAg+RE": transforms.Compose([CustomTA_color(), CustomTA_geometric(), self.transforms_preprocess, re]),
+                "TAc+TAgorRE": transforms.Compose([CustomTA_color(),
+                                         RandomChoiceTransforms([transforms.Compose([CustomTA_geometric(), self.transforms_preprocess]),
                                                                  transforms.Compose(
                                              [self.transforms_preprocess,
-                                              transforms.RandomErasing(p=1.0, scale=(0.02, 0.4), value='random'),
-                                              transforms.ToPILImage()]),
+                                              transforms.RandomErasing(p=1.0, scale=(0.02, 0.4), value='random')]),
                                                                 transforms.Compose([
                                               self.transforms_preprocess,
-                                              transforms.RandomErasing(p=1.0, scale=(0.02, 0.4), value=0),
-                                              transforms.ToPILImage()])],
-                                        [6, 1, 1])])
-            elif train_aug_strat == "TAorStyle":
-                TAc = CustomTA_color()
-                TAg = CustomTA_geometric()
-                vgg, decoder = style_transfer.load_models()
-                style_feats = style_transfer.load_feat_files()
+                                              transforms.RandomErasing(p=1.0, scale=(0.02, 0.4), value=0)])],
+                                        [6, 1, 1])]),
+                "TAc+REorTAg": RandomChoiceTransforms([transforms.Compose([TAg, self.transforms_preprocess]),
+                                                       transforms.Compose([TAc, self.transforms_preprocess,
+                                                             transforms.RandomErasing(p=0.525, scale=(0.02, 0.4),
+                                                                                      value='random')])],
+                                        [6, 8]),
+                "StyleTransfer": transforms.Compose([stylization(), self.transforms_preprocess, re]),
+                "TAorStyle0.75": transforms.Compose([RandomChoiceTransforms([transforms_v2.TrivialAugmentWide(), stylization()], [1, 3]),
+                                                    self.transforms_preprocess, re]),
+                "TAorStyle0.5": transforms.Compose([RandomChoiceTransforms([transforms_v2.TrivialAugmentWide(), stylization()], [1, 1]),
+                                                    self.transforms_preprocess, re]),
+                "TAorStyle0.25": transforms.Compose([RandomChoiceTransforms([transforms_v2.TrivialAugmentWide(), stylization()], [3, 1]),
+                                                    self.transforms_preprocess, re]),
+                "TAorStyle0.1": transforms.Compose([RandomChoiceTransforms([transforms_v2.TrivialAugmentWide(), stylization()], [9, 1]),
+                                                     self.transforms_preprocess, re]),
+                "StyleAndTA": transforms.Compose([stylization(), transforms_v2.TrivialAugmentWide(), self.transforms_preprocess, re]),
+                "TrivialAugmentWide": transforms.Compose([transforms_v2.TrivialAugmentWide(),
+                                                          self.transforms_preprocess, re]),
+                "RandAugment": transforms.Compose([transforms_v2.RandAugment(),
+                                                          self.transforms_preprocess, re]),
+                "AutoAugment": transforms.Compose([transforms_v2.AutoAugment(),
+                                                          self.transforms_preprocess, re]),
+                "AugMix": transforms.Compose([transforms_v2.AugMix(),
+                                                          self.transforms_preprocess, re]),
+                'None': transforms.Compose([self.transforms_preprocess, re])
+            }
+            self.transforms_augmentation = (transform_map[train_aug_strat_orig]
+                if train_aug_strat_orig in transform_map
+                else transform_not_found(train_aug_strat_orig, 'transforms_original'))
 
-                Stylize = style_transfer.NSTTransform(style_feats, vgg, decoder, alpha_min=0.2, alpha_max=1.0, probability=0.9)
-
-                tf = transforms.Compose([RandomChoiceTransforms([TAc, TAg, Stylize], [8, 6, 14]),
-                                                                transforms.Compose([
-                                                            self.transforms_preprocess, re, transforms.ToPILImage()])])
-            elif train_aug_strat == "TAorStyleweaker":
-                TAc = CustomTA_color()
-                TAg = CustomTA_geometric()
-                vgg, decoder = style_transfer.load_models()
-                style_feats = style_transfer.load_feat_files()
-
-                Stylize = style_transfer.NSTTransform(style_feats, vgg, decoder, alpha_min=0.2, alpha_max=1.0, probability=0.8)
-
-                tf = transforms.Compose([RandomChoiceTransforms([TAc, TAg, Stylize], [8, 6, 5]),
-                                                                transforms.Compose([
-                                                            self.transforms_preprocess, re, transforms.ToPILImage()])])
-            elif train_aug_strat == "TAc+REorTAg":
-                TAc = CustomTA_color()
-                TAg = CustomTA_geometric()
-                tf = RandomChoiceTransforms([TAg,
-                    transforms.Compose([TAc, self.transforms_preprocess, transforms.RandomErasing(p=0.525, scale=(0.02, 0.4), value='random'),
-                     transforms.ToPILImage()])],
-                                            [6, 8])
-            else:
-                tf = getattr(transforms_v2, train_aug_strat)()
-
-            self.transforms_augmentation = transforms.Compose([tf, self.transforms_preprocess])#, re])
+            self.transforms_generated = (transform_map[train_aug_strat_gen]
+                                            if train_aug_strat_gen in transform_map
+                                            else transform_not_found(train_aug_strat_gen, 'transforms_generated'))
         else:
             self.transforms_augmentation = transforms.Compose([self.transforms_preprocess, re])
-
 
     def load_base_data(self, validontest, run=0):
 
@@ -321,17 +334,17 @@ class DataLoading():
             print('Dataset not loadable')
         self.num_classes = len(self.testset.classes)
 
-    def load_augmented_traindata(self, target_size, seed=0, transforms_generated = None, robust_samples=0):
+    def load_augmented_traindata(self, target_size, epoch=0, robust_samples=0):
 
-        self.transforms_generated = transforms_generated
         self.robust_samples = robust_samples
         self.target_size = target_size
         self.generated_dataset = np.load(f'./experiments/data/{self.dataset}-add-1m-dm.npz',
                                     mmap_mode='r') if self.generated_ratio > 0.0 else None
+        self.epoch = epoch
 
-        #torch.manual_seed(seed)
-        #np.random.seed(seed)
-        #random.seed(seed)
+        torch.manual_seed(self.epoch + self.epochs * self.run)
+        np.random.seed(self.epoch + self.epochs * self.run)
+        random.seed(self.epoch + self.epochs * self.run)
 
         # Prepare lists for combined data
         images = [None] * self.target_size
@@ -371,7 +384,7 @@ class DataLoading():
             sources[self.num_original:self.target_size] = [False] * self.num_generated
 
         self.trainset = AugmentedDataset(images, labels, sources, self.transforms_preprocess,
-                                         self.transforms_basic, self.transforms_augmentation, transforms_generated,
+                                         self.transforms_basic, self.transforms_augmentation, self.transforms_generated,
                                          robust_samples)
 
     def load_data_c(self, subset, subsetsize):
@@ -425,25 +438,31 @@ class DataLoading():
 
     def get_loader(self, batchsize, number_workers):
         self.number_workers = number_workers
+
+        g = torch.Generator()
+        g.manual_seed(self.epoch + self.epochs * self.run)
+
         if self.generated_ratio > 0.0:
             self.CustomSampler = BalancedRatioSampler(self.trainset, generated_ratio=self.generated_ratio,
                                                  batch_size=batchsize)
         else:
             self.CustomSampler = BatchSampler(RandomSampler(self.trainset), batch_size=batchsize, drop_last=False)
-        self.trainloader = DataLoader(self.trainset, batch_sampler=self.CustomSampler, pin_memory=True, num_workers=number_workers)
-        self.validationloader = DataLoader(self.validset, batch_size=batchsize, pin_memory=False, num_workers=number_workers)
+        self.trainloader = DataLoader(self.trainset, batch_sampler=self.CustomSampler, pin_memory=True,
+                                      num_workers=number_workers, worker_init_fn=seed_worker, generator=g)
+        self.validationloader = DataLoader(self.validset, batch_size=batchsize, pin_memory=False, num_workers=0)
 
         return self.trainloader, self.validationloader
 
     def update_trainset(self, epoch, start_epoch):
-        if self.generated_ratio == 0.0 or epoch == 0 or epoch == start_epoch:
-            return self.trainloader
-        else:
-            self.load_augmented_traindata(self.target_size, seed=epoch, transforms_generated=self.transforms_generated,
-                                          robust_samples=self.robust_samples)
-            self.trainloader = DataLoader(self.trainset, batch_sampler=self.CustomSampler, pin_memory=True,
-                                          num_workers=self.number_workers)
-            return self.trainloader
+
+        if self.generated_ratio != 0.0 and epoch != 0 and epoch != start_epoch:
+            self.load_augmented_traindata(self.target_size, epoch=epoch, robust_samples=self.robust_samples)
+
+        g = torch.Generator()
+        g.manual_seed(self.epoch + self.epochs * self.run)
+        self.trainloader = DataLoader(self.trainset, batch_sampler=self.CustomSampler, pin_memory=True,
+                                      num_workers=self.number_workers, worker_init_fn=seed_worker, generator=g)
+        return self.trainloader
 
 def normalization_values(batch, dataset, normalized, manifold=False, manifold_factor=1):
 

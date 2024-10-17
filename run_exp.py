@@ -7,23 +7,20 @@ if __name__ == '__main__':
     os.environ["CUDA_LAUNCH_BLOCKING"] = "1" #prevents "CUDA error: unspecified launch failure" and is recommended for some illegal memory access errors #increases train time by ~5-15%
     #os.environ["CUDA_VISIBLE_DEVICES"] = "1" #this blocks the spawn of multiple workers
 
-    for experiment in [2]:
+    for experiment in [1,8,9,10,11,12]:
 
         configname = (f'experiments.configs.config{experiment}')
         config = importlib.import_module(configname)
 
         print('Starting experiment #',experiment, 'on', config.dataset, 'dataset')
-        if experiment in [2]:
-            runs = 5
-        else:
-            runs = 1
+        runs = 1
 
-        if experiment in [2]:
+        if experiment in [1,8,9]:
             resume = True
         else:
             resume = False
 
-        for run in [3]:#range(runs):
+        for run in range(runs):
             print("Training run #",run)
             if config.combine_train_corruptions:
                 print('Combined training')
@@ -33,7 +30,8 @@ if __name__ == '__main__':
                        f"--earlystop={config.earlystop} --earlystopPatience={config.earlystopPatience} --optimizer=" \
                        f"{config.optimizer} --optimizerparams=\"{config.optimizerparams}\" --modeltype=" \
                        f"{config.modeltype} --modelparams=\"{config.modelparams}\" --resize={config.resize} " \
-                       f"--aug_strat_check={config.aug_strat_check} --train_aug_strat={config.train_aug_strat} --loss=" \
+                       f"--aug_strat_check={config.aug_strat_check} --train_aug_strat_orig={config.train_aug_strat_orig} " \
+                       f"--train_aug_strat_gen={config.train_aug_strat_gen} --loss=" \
                        f"{config.loss} --lossparams=\"{config.lossparams}\" --trades_loss={config.trades_loss} " \
                        f"--trades_lossparams=\"{config.trades_lossparams}\" --robust_loss={config.robust_loss} " \
                        f"--robust_lossparams=\"{config.robust_lossparams}\" --mixup=\"{config.mixup}\" --cutmix=" \
@@ -56,7 +54,8 @@ if __name__ == '__main__':
                            f"--earlystop={config.earlystop} --earlystopPatience={config.earlystopPatience} --optimizer=" \
                            f"{config.optimizer} --optimizerparams=\"{config.optimizerparams}\" --modeltype=" \
                            f"{config.modeltype} --modelparams=\"{config.modelparams}\" --resize={config.resize} " \
-                           f"--aug_strat_check={config.aug_strat_check} --train_aug_strat={config.train_aug_strat} --loss=" \
+                           f"--aug_strat_check={config.aug_strat_check} --train_aug_strat_orig={config.train_aug_strat_orig} " \
+                       f"--train_aug_strat_gen={config.train_aug_strat_gen} --loss=" \
                            f"{config.loss} --lossparams=\"{config.lossparams}\" --trades_loss={config.trades_loss} " \
                            f"--trades_lossparams=\"{config.trades_lossparams}\" --robust_loss={config.robust_loss} " \
                            f"--robust_lossparams=\"{config.robust_lossparams}\" --mixup=\"{config.mixup}\" --cutmix=" \
@@ -72,7 +71,7 @@ if __name__ == '__main__':
 
         # Calculate accuracy and robust accuracy, evaluating each trained network on each corruption
 
-        if experiment in [2]:
+        if experiment in [1]:
             print('Beginning metric evaluation')
             cmdeval = "python experiments/eval.py --resume={} --experiment={} --runs={} --batchsize={} --dataset={} " \
                     "--modeltype={} --modelparams=\"{}\" --resize={} --combine_test_corruptions={} --number_workers={} " \

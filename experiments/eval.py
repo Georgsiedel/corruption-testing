@@ -1,18 +1,26 @@
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+module_path = os.path.abspath(os.path.dirname(__file__))
+
+if module_path not in sys.path:
+    sys.path.append(module_path)
+
 import numpy as np
 import torch
 import torch.backends.cudnn as cudnn
 import torchvision.models as torchmodels
-from torch.utils.data import DataLoader
+import torch.utils.data
 from torchmetrics.classification import MulticlassCalibrationError
 import argparse
 import importlib
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
-import experiments.models as low_dim_models
-import experiments.eval_adversarial as eval_adversarial
-import experiments.eval_corruptions as eval_corruptions
-import experiments.data as data
-import experiments.utils as utils
+import models as low_dim_models
+import eval_adversarial
+import eval_corruptions
+import data
+import utils
 
 parser = argparse.ArgumentParser(description='PyTorch Robustness Testing')
 parser.add_argument('--resume', type=utils.str2bool, nargs='?', const=False, default=False,
@@ -92,9 +100,9 @@ if __name__ == '__main__':
 
     # Load data
     Dataloader = data.DataLoading(dataset=args.dataset, generated_ratio=0.0, resize=args.resize)
-    Dataloader.create_transforms(aug_strat_check=False, train_aug_strat='None')
+    Dataloader.create_transforms(aug_strat_check=False, train_aug_strat_orig='None', train_aug_strat_gen='None')
     Dataloader.load_base_data(validontest=True)
-    testloader = DataLoader(Dataloader.testset, batch_size=args.batchsize, shuffle=False, pin_memory=True,
+    testloader = torch.utils.data.DataLoader(Dataloader.testset, batch_size=args.batchsize, shuffle=False, pin_memory=True,
                             num_workers=args.number_workers)
 
     for run in range(args.runs):

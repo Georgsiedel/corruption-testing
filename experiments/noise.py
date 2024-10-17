@@ -9,9 +9,10 @@ import numpy as np
 import random
 import matplotlib.pyplot as plt
 import torch.distributions as dist
+from data import normalization_values
+from utils import plot_images
+
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-from experiments.data import normalization_values
-from experiments.utils import plot_images
 
 def random_erasing_style_mask(batch, noise_patch_lower_scale=0.3, noise_patch_upper_scale=1.0, ratio=[0.3, 3.3]):
         """Get image mask for Patched Noise. Rectangle fully inside the image, as in RandomErasing

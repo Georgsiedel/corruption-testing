@@ -1,8 +1,4 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 import torch
-
 device = "cuda" if torch.cuda.is_available() else "cpu"
 import numpy as np
 from torch.utils.data import DataLoader
