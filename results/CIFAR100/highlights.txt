@@ -23,5 +23,8 @@ Best out of 5 runs --> run 2
 "\CIFAR100\WideResNet_28_4\11_no mixup, with manifold, with and without generated\config8_noJSD_with_generated_smallerpatch_1.0sparsity_0.3RE.py"
 83,27/73,11/72,28
 
-7) "\CIFAR100\WideResNet_28_4\15_StyleMix\config9_ParallelTA_and_StyleTransfer_0.75-to-0.25.py"
+7) "\CIFAR100\WideResNet_28_4\15_StyleMix\config9_ParallelTA_and_StyleTransfer_0.25.py"
 82,78/74,52/73,98
+
+8) "\CIFAR100\WideResNet_28_4\15_StyleMix\config8_ParallelTA_and_StyleTransfer_0.1_original_0.5_generated.py"
+83,38/74,95/74,52

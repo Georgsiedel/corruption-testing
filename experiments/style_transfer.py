@@ -74,34 +74,34 @@ class NSTTransform(transforms.Transform):
         self.num_styles = len(style_feats)
         self.probability = probability
         self.to_pil_img = transforms.ToPILImage()
-    
-    """def randomize_alpha(self):
-
-        alpha_values = [round(x, 1) for x in torch.arange(self.rand_min, self.rand_max, 0.1).tolist()]
-        return random.choice(alpha_values)"""
+        #self.bs = 512
 
     @torch.no_grad()
     def __call__(self, x):
 
-        if torch.rand(1).item() < self.probability:
-            org_x = x
+        if torch.rand(1).item() < self.probability: # here
+
             x = self.to_tensor(x).to(device)
-            x = x.unsqueeze(0)
+            x = x.unsqueeze(0) # here
+            
             x = self.upsample(x)
 
-            idx = torch.randperm(self.num_styles)[0]
-            style_image = self.style_features[idx].unsqueeze(0)
-            stl_img = self.style_transfer(self.vgg, self.decoder, x, style_image)
-            stl_img = self.downsample(stl_img).squeeze(0).cpu()
+            idx = torch.randperm(self.num_styles)[0] #[0:int(self.bs*self.probability)]
+            #idy = torch.randperm(self.bs)[0:int(self.bs*self.probability)]
+
+            style_image = self.style_features[idx].unsqueeze(0) # here unsqueeze
+            
+            x = self.style_transfer(self.vgg, self.decoder, x, style_image) #x[idy] x2
+
+            stl_img = self.downsample(x)
+            stl_img = stl_img.squeeze(0).cpu() # here
 
             stl_img = self.norm_style_tensor(stl_img)
-            
-            style_image = self.to_pil_img(stl_img)
-
-            return style_image
+            stl_img = self.to_pil_img(stl_img) # here
+            return stl_img
         
-        else:
-            return x
+        else: # here
+            return x # here
     
     def norm_style_tensor(self, tensor):
         min_val = tensor.min()
@@ -109,7 +109,7 @@ class NSTTransform(transforms.Transform):
 
         normalized_tensor = (tensor - min_val) / (max_val - min_val)
         scaled_tensor = normalized_tensor * 255
-        scaled_tensor = scaled_tensor.byte() # converts dtype to torch.uint8 between 0 and 255
+        scaled_tensor = scaled_tensor.byte() # converts dtype to torch.uint8 between 0 and 255 #here
         return scaled_tensor
 
     @torch.no_grad()
@@ -122,5 +122,5 @@ class NSTTransform(transforms.Transform):
         feat = utils.adaptive_instance_normalization(content_f, style_f)
 
         feat = feat * alpha + content_f * (1 - alpha)
-
-        return decoder(feat)
+        feat = decoder(feat)
+        return feat

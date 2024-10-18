@@ -17,6 +17,7 @@ import torch.optim as optim
 from torch.optim.swa_utils import AveragedModel, SWALR
 import torchvision.models as torchmodels
 
+import style_transfer
 import data
 import utils
 import losses
@@ -138,6 +139,8 @@ def train_epoch(pbar):
         if criterion.robust_samples >= 1:
             inputs = torch.cat(inputs, 0)
         inputs, targets = inputs.to(device, dtype=torch.float32), targets.to(device)
+        #inputs = Stylize(inputs)
+
         with torch.cuda.amp.autocast():
             outputs, mixed_targets = model(inputs, targets, criterion.robust_samples, train_corruptions, args.mixup['alpha'],
                                            args.mixup['p'], args.manifold['apply'], args.manifold['noise_factor'],
@@ -207,7 +210,7 @@ def valid_epoch(pbar, net):
         if args.validonc == True:
             pbar.set_description(
                 '[Valid] Robust Accuracy Calculation. Last Robust Accuracy: {:.3f}'.format(Traintracker.valid_accs_robust[-1] if Traintracker.valid_accs_robust else 0))
-            acc_c = compute_c_corruptions(args.dataset, testsets_c, net, batchsize=200,
+            acc_c = compute_c_corruptions(args.dataset, testsets_c, net, batchsize=100,
                                           num_classes=Dataloader.num_classes, eval_run = True)[0]
         pbar.update(1)
 
@@ -229,8 +232,7 @@ if __name__ == '__main__':
     testsets_c = Dataloader.load_data_c(subset=args.validonc, subsetsize=100)
 
     # Construct model
-    print(f'\nBuilding {args.modeltype} model with {args.modelparams} | Augmentation strategy: {args.aug_strat_check}'
-          f' | Loss Function: {args.loss}, Stability Loss: {args.robust_loss}, Trades Loss: {args.trades_loss}')
+    print(f'\nBuilding {args.modeltype} model with {args.modelparams} | Loss Function: {args.loss}, Stability Loss: {args.robust_loss}, Trades Loss: {args.trades_loss}')
     if args.dataset in ('CIFAR10', 'CIFAR100', 'TinyImageNet'):
         model_class = getattr(low_dim_models, args.modeltype)
         model = model_class(dataset=args.dataset, normalized =args.normalize, num_classes=Dataloader.num_classes,
@@ -239,6 +241,11 @@ if __name__ == '__main__':
         model_class = getattr(torchmodels, args.modeltype)
         model = model_class(num_classes = Dataloader.num_classes, **args.modelparams)
     model = torch.nn.DataParallel(model).to(device)
+    
+    #vgg, decoder = style_transfer.load_models()
+    #style_feats = style_transfer.load_feat_files()
+
+    #Stylize = style_transfer.NSTTransform(style_feats, vgg, decoder, alpha_min=0.2, alpha_max=1.0, probability=0.27)
 
     # Define Optimizer, Learningrate Scheduler, Scaler, and Early Stopping
     opti = getattr(optim, args.optimizer)

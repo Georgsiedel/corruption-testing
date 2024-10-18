@@ -41,7 +41,7 @@ parser.add_argument('--combine_test_corruptions', type=utils.str2bool, nargs='?'
                     help='Whether to combine all testing noise values by drawing from the randomly')
 parser.add_argument('--combine_train_corruptions', type=utils.str2bool, nargs='?', const=True, default=True,
                     help='Whether to combine all training noise values by drawing from the randomly')
-parser.add_argument('--number_workers', default=1, type=int, help='How many workers are launched to parallelize data '
+parser.add_argument('--number_workers', default=0, type=int, help='How many workers are launched to parallelize data '
                     'loading. Experimental. 4 for ImageNet, 1 for Cifar. More demand GPU memory, but maximize GPU usage.')
 parser.add_argument('--normalize', type=utils.str2bool, nargs='?', const=False, default=False,
                     help='Whether to normalize input data to mean=0 and std=1')

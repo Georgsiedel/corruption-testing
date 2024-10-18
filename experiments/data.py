@@ -33,12 +33,16 @@ class SwaLoader():
 
     def get_swa_dataloader(self):
         # Create a new DataLoader with the custom collate function
+
         swa_dataloader = DataLoader(
             dataset=self.trainloader.dataset,
             batch_size=self.batchsize,
-            num_workers=self.trainloader.num_workers,
-            collate_fn=self.concatenate_collate_fn
+            num_workers=0,
+            collate_fn=self.concatenate_collate_fn,
+            worker_init_fn=self.trainloader.worker_init_fn,
+            generator=self.trainloader.generator
         )
+
         return swa_dataloader
 
 class CustomDataset(Dataset):

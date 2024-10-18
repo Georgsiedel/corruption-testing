@@ -1,6 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 import torch
 import torchvision
 import torchvision.transforms as transforms
@@ -11,6 +8,7 @@ import pandas as pd
 import time
 import matplotlib.pyplot as plt
 import os
+
 # calculate r-separation distance of dataset
 def get_nearest_oppo_dist(norm):
 
