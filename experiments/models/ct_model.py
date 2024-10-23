@@ -4,6 +4,7 @@ import numpy as np
 from experiments.mixup import mixup_process
 from experiments.noise import apply_noise, noise_up, apply_noise_add_and_mult
 from experiments.data import normalization_values
+import torch
 
 class CtModel(nn.Module):
 
@@ -33,8 +34,6 @@ class CtModel(nn.Module):
         elif mixup_alpha > 0.0 and manifold == True: k = np.random.choice(range(3), 1)[0] #, p=[0.5, 0.25, 0.25]
         else: k = 0
 
-        #original_batchsize = (out.size(0) // (robust_samples + 1))
-
         if k == 0:  # Do input mixup if k is 0
             mixed_out, targets = mixup_process(out, targets, robust_samples, self.num_classes, mixup_alpha, mixup_p,
                                          cutmix_alpha, cutmix_p, generated_ratio, manifold=False, inplace=True)
@@ -44,7 +43,7 @@ class CtModel(nn.Module):
                                                             noise_patch_lower_scale=noise_patch_lower_scale,
                                                             noise_patch_upper_scale=noise_patch_upper_scale)
             out = noisy_out
-            #plot_images(noisy_out, mixed_out, 3, self.mean, self.std)
+            #plot_images(noisy_out, noisy_out[300:305], 5, self.mean, self.std)
 
         out = self.blocks[0](out)
 

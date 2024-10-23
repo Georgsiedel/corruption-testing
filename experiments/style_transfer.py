@@ -5,6 +5,8 @@ import numpy as np
 current_dir = os.path.dirname(__file__)
 module_path = os.path.abspath(current_dir)
 import time
+import math
+import random
 
 if module_path not in sys.path:
     sys.path.append(module_path)
@@ -74,35 +76,32 @@ class NSTTransform(transforms.Transform):
         self.num_styles = len(style_feats)
         self.probability = probability
         self.to_pil_img = transforms.ToPILImage()
-        #self.bs = 512
 
     @torch.no_grad()
     def __call__(self, x):
 
-        if torch.rand(1).item() < self.probability: # here
+        x = x.to(device)
 
-            x = self.to_tensor(x).to(device)
-            x = x.unsqueeze(0) # here
-            
-            x = self.upsample(x)
+        x = self.upsample(x)
+        ratio = int(math.floor(x.size(0)*self.probability + random.random()))
 
-            idx = torch.randperm(self.num_styles)[0] #[0:int(self.bs*self.probability)]
-            #idy = torch.randperm(self.bs)[0:int(self.bs*self.probability)]
-
-            style_image = self.style_features[idx].unsqueeze(0) # here unsqueeze
-            
-            x = self.style_transfer(self.vgg, self.decoder, x, style_image) #x[idy] x2
-
-            stl_img = self.downsample(x)
-            stl_img = stl_img.squeeze(0).cpu() # here
-
-            stl_img = self.norm_style_tensor(stl_img)
-            stl_img = self.to_pil_img(stl_img) # here
-            return stl_img
+        idx = torch.randperm(self.num_styles)[0:ratio]
+        idy = torch.randperm(x.size(0))[0:ratio]
         
-        else: # here
-            return x # here
-    
+        x[idy] = self.style_transfer(self.vgg, self.decoder, x[idy], self.style_features[idx])
+
+        stl_imgs = self.downsample(x)
+        stl_imgs = stl_imgs.detach().cpu()
+        # Create a boolean mask: True if image stylized, False if not
+        stylized = torch.isin(torch.arange(stl_imgs.size(0)), idy)
+
+        stl_imgs = self.norm_style_tensor(stl_imgs)
+
+        stl_imgs = [self.to_pil_img(image) for image in stl_imgs]
+
+        return stl_imgs, stylized
+
+    @torch.no_grad()
     def norm_style_tensor(self, tensor):
         min_val = tensor.min()
         max_val = tensor.max()
@@ -110,7 +109,7 @@ class NSTTransform(transforms.Transform):
         normalized_tensor = (tensor - min_val) / (max_val - min_val)
         scaled_tensor = normalized_tensor * 255
         scaled_tensor = scaled_tensor.byte() # converts dtype to torch.uint8 between 0 and 255 #here
-        return scaled_tensor
+        return normalized_tensor
 
     @torch.no_grad()
     def style_transfer(self, vgg, decoder, content, style):

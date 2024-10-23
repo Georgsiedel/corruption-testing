@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 import torch.distributions as dist
 from data import normalization_values
 from utils import plot_images
+from itertools import chain
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
@@ -241,7 +242,10 @@ def apply_noise(batch, minibatchsize, corruptions, concurrent_combinations, norm
             if corruptions.get('noise_type') != ('gaussian' or 'uniform-linf' or 'standard' or 'uniform-l0-impulse'):
                 print('Warning: noise_type of p-norm outside L0 and Linf may not be applicable for manifold noise')
 
-    minibatches = batch.view(-1, minibatchsize, batch.size()[1], batch.size()[2], batch.size()[3])
+    # Split into minibatches, handling residual (if any)
+    full_minibatches = batch[:batch.size(0) // minibatchsize * minibatchsize].view(-1, minibatchsize, batch.size(1), batch.size(2), batch.size(3))
+    residual_batch = batch[batch.size(0) // minibatchsize * minibatchsize:] if batch.size(0) % minibatchsize > 0 else None
+    minibatches = chain(full_minibatches, [residual_batch] if residual_batch is not None else [])
 
     for id, minibatch in enumerate(minibatches):
         #no dict means corruption combination, so we choose randomly, dict means one single corruption
@@ -270,9 +274,8 @@ def apply_noise(batch, minibatchsize, corruptions, concurrent_combinations, norm
         mask = random_erasing_style_mask(minibatch, noise_patch_lower_scale=noise_patch_lower_scale,
                                          noise_patch_upper_scale=noise_patch_upper_scale, ratio = [0.3, 3.3])
         final_minibatch = torch.where(mask, noisy_minibatch, minibatch)
-        minibatches[id] = final_minibatch
+        batch[id*minibatchsize:min((id+1)*minibatchsize, batch.size(0))] = final_minibatch
 
-    batch = minibatches.view(-1, batch.size()[1], batch.size()[2], batch.size()[3])
     return batch
 
 def sample_lp_corr_batch(noise_type, epsilon, batch, density_distribution_max, mean, std, manifold, sparsity=0.0):

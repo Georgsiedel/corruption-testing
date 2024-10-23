@@ -16,6 +16,7 @@ import torch.cuda.amp
 import torch.optim as optim
 from torch.optim.swa_utils import AveragedModel, SWALR
 import torchvision.models as torchmodels
+import torchvision.transforms.v2 as transforms
 
 import style_transfer
 import data
@@ -65,8 +66,6 @@ parser.add_argument('--modelparams', default={}, type=str, action=utils.str2dict
                     help='parameters for the chosen model')
 parser.add_argument('--resize', type=utils.str2bool, nargs='?', const=False, default=False,
                     help='Resize a model to 224x224 pixels, standard for models like transformers.')
-parser.add_argument('--aug_strat_check', type=utils.str2bool, nargs='?', const=True, default=False,
-                    help='Whether to use an auto-augmentation scheme')
 parser.add_argument('--train_aug_strat_orig', default='TrivialAugmentWide', type=str, help='augmentation scheme')
 parser.add_argument('--train_aug_strat_gen', default='TrivialAugmentWide', type=str, help='augmentation scheme')
 parser.add_argument('--loss', default='CrossEntropyLoss', type=str, help='loss function to use, chosen from torch.nn loss functions')
@@ -139,7 +138,11 @@ def train_epoch(pbar):
         if criterion.robust_samples >= 1:
             inputs = torch.cat(inputs, 0)
         inputs, targets = inputs.to(device, dtype=torch.float32), targets.to(device)
-        #inputs = Stylize(inputs)
+        
+        #transformed_batch = torch.stack([Dataloader.transforms_orig_gpu(image) if (source==True and Dataloader.transforms_orig_gpu != None) else
+        #                                Dataloader.transforms_gen_gpu(image) if (source==False and Dataloader.transforms_gen_gpu != None) else
+        #                                image
+        #                                for image, source in zip(inputs, sources)])
 
         with torch.cuda.amp.autocast():
             outputs, mixed_targets = model(inputs, targets, criterion.robust_samples, train_corruptions, args.mixup['alpha'],
@@ -227,7 +230,7 @@ if __name__ == '__main__':
     criterion = losses.Criterion(args.loss, trades_loss=args.trades_loss, robust_loss=args.robust_loss, **lossparams)
 
     Dataloader = data.DataLoading(args.dataset, args.epochs, args.generated_ratio, args.resize, args.run)
-    Dataloader.create_transforms(args.aug_strat_check, args.train_aug_strat_orig, args.train_aug_strat_gen, args.RandomEraseProbability)
+    Dataloader.create_transforms(args.train_aug_strat_orig, args.train_aug_strat_gen, args.RandomEraseProbability)
     Dataloader.load_base_data(args.validontest, args.run)
     testsets_c = Dataloader.load_data_c(subset=args.validonc, subsetsize=100)
 
@@ -241,11 +244,6 @@ if __name__ == '__main__':
         model_class = getattr(torchmodels, args.modeltype)
         model = model_class(num_classes = Dataloader.num_classes, **args.modelparams)
     model = torch.nn.DataParallel(model).to(device)
-    
-    #vgg, decoder = style_transfer.load_models()
-    #style_feats = style_transfer.load_feat_files()
-
-    #Stylize = style_transfer.NSTTransform(style_feats, vgg, decoder, alpha_min=0.2, alpha_max=1.0, probability=0.27)
 
     # Define Optimizer, Learningrate Scheduler, Scaler, and Early Stopping
     opti = getattr(optim, args.optimizer)

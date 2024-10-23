@@ -99,8 +99,8 @@ if __name__ == '__main__':
                                 test_corruptions, args.adv_distance_params)
 
     # Load data
-    Dataloader = data.DataLoading(dataset=args.dataset, generated_ratio=0.0, resize=args.resize)
-    Dataloader.create_transforms(aug_strat_check=False, train_aug_strat_orig='None', train_aug_strat_gen='None')
+    Dataloader = data.DataLoading(dataset=args.dataset, generated_ratio=0.0, resize=args.resize, test_only=True)
+    Dataloader.create_transforms(train_aug_strat_orig='None', train_aug_strat_gen='None')
     Dataloader.load_base_data(validontest=True)
     testloader = torch.utils.data.DataLoader(Dataloader.testset, batch_size=args.batchsize, shuffle=False, pin_memory=True,
                             num_workers=args.number_workers)

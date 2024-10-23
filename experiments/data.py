@@ -1,5 +1,6 @@
 import random
 import time
+import gc
 
 import torch
 from PIL import Image
@@ -85,19 +86,12 @@ class BalancedRatioSampler(Sampler):
         original_perm = torch.randperm(self.num_original)
         generated_perm = torch.randperm(self.num_generated) + self.num_original
 
-        generated_residual_batch = self.num_generated_batch
-        original_residual_batch = self.num_original_batch
-
         batch_starts = range(0, self.size, self.batch_size)  # Start points for each batch
         for i, start in enumerate(batch_starts):
-            # Calculate end to avoid going out of bounds
-            togo = self.size - start
-            if togo < self.batch_size:
-                generated_residual_batch = int(togo * self.generated_ratio)
-                original_residual_batch = togo - generated_residual_batch
-            # Slicing the permutation to get batch indices
-            original_indices = original_perm[i * self.num_original_batch:i * self.num_original_batch + original_residual_batch]
-            generated_indices = generated_perm[i * self.num_generated_batch:i * self.num_generated_batch + generated_residual_batch]
+
+            # Slicing the permutation to get batch indices, avoiding going out of bound
+            original_indices = original_perm[min(i * self.num_original_batch, self.num_original) : min((i+1) * self.num_original_batch, self.num_original)]
+            generated_indices = generated_perm[min(i * self.num_generated_batch, self.num_generated) : min((i+1) * self.num_generated_batch, self.num_generated)]
 
             # Combine
             batch_indices = torch.cat((original_indices, generated_indices))
@@ -111,29 +105,51 @@ class BalancedRatioSampler(Sampler):
 class AugmentedDataset(torch.utils.data.Dataset):
     """Dataset wrapper to perform augmentations and allow robust loss functions."""
 
-    def __init__(self, images, labels, sources, transforms_preprocess, transforms_basic, transforms_augmentation,
-                 transforms_generated=None, robust_samples=0):
+    def __init__(self, images, labels, sources, stylized, transforms_preprocess, transforms_basic, transforms_orig_cpu, 
+                transforms_orig_gpu, transforms_gen_cpu, transforms_gen_gpu, robust_samples=0):
         self.images = images
         self.labels = labels
         self.sources = sources
+        self.stylized = stylized
         self.preprocess = transforms_preprocess
         self.transforms_basic = transforms_basic
-        self.transforms_augmentation = transforms_augmentation
-        self.transforms_generated = transforms_generated if transforms_generated else transforms_augmentation
+        self.transforms_orig_cpu = transforms_orig_cpu
+        self.transforms_orig_gpu = transforms_orig_gpu
+        self.transforms_gen_cpu = transforms_gen_cpu
+        self.transforms_gen_gpu = transforms_gen_gpu
         self.robust_samples = robust_samples
 
     def __getitem__(self, i):
         x = self.images[i]
-        aug_strat = self.transforms_augmentation if self.sources[i] == True else self.transforms_generated
-        augment = transforms.Compose([self.transforms_basic, aug_strat])
-        if self.robust_samples == 0:
-          return augment(x), self.labels[i]
-        elif self.robust_samples == 1:
-          im_tuple = (self.preprocess(x), augment(x))
-          return im_tuple, self.labels[i]
-        elif self.robust_samples == 2:
-          im_tuple = (self.preprocess(x), augment(x), augment(x))
-          return im_tuple, self.labels[i]
+
+        if (self.sources[i] and self.transforms_orig_gpu is not None) or (not self.sources[i] and self.transforms_gen_gpu is not None):
+            basic_augment = transforms.Compose([self.transforms_basic, self.preprocess])
+            post_stylized_augment = self.transforms_orig_cpu if self.sources[i] == True else self.transforms_gen_cpu
+
+            if self.robust_samples == 0:
+                return post_stylized_augment(basic_augment(x), self.stylized[i]), self.labels[i]
+            elif self.robust_samples == 1:
+                im_tuple = (self.preprocess(x), 
+                            post_stylized_augment(basic_augment(x), self.stylized[i]))
+                return im_tuple, self.labels[i]
+            elif self.robust_samples == 2:
+                im_tuple = (self.preprocess(x), 
+                            post_stylized_augment(basic_augment(x), self.stylized[i]), 
+                            post_stylized_augment(basic_augment(x), self.stylized[i]))
+                return im_tuple, self.labels[i]
+        
+        else:
+            augment = transforms.Compose([self.transforms_basic, self.preprocess,
+                                    self.transforms_orig_cpu if self.sources[i] == True else self.transforms_gen_cpu])
+        
+            if self.robust_samples == 0:
+                return augment(x), self.labels[i]
+            elif self.robust_samples == 1:
+                im_tuple = (self.preprocess(x), augment(x))
+                return im_tuple, self.labels[i]
+            elif self.robust_samples == 2:
+                im_tuple = (self.preprocess(x), augment(x), augment(x))
+                return im_tuple, self.labels[i]
 
     def __len__(self):
         return len(self.labels)
@@ -149,14 +165,19 @@ class RandomChoiceTransforms:
         choice = random.choices(self.transforms, self.p)[0]
         return choice(x)
 
+class StylizedChoiceTransforms:
+    def __init__(self, transforms):
+        self.transforms = transforms
+
+    def __call__(self, x, stylized):
+        if stylized:
+            return self.transforms["stylized"](x)  # Apply t2
+        else:
+            return self.transforms["unstylized"](x)  # Apply t1
+
 class CustomTA_color(transforms_v2.TrivialAugmentWide):
     _AUGMENTATION_SPACE = {
-    #"Identity": (lambda num_bins, height, width: None, False),
-    #"ShearX": (lambda num_bins, height, width: torch.linspace(0.0, 0.99, num_bins), True),
-    #"ShearY": (lambda num_bins, height, width: torch.linspace(0.0, 0.99, num_bins), True),
-    #"TranslateX": (lambda num_bins, height, width: torch.linspace(0.0, 32.0, num_bins), True),
-    #"TranslateY": (lambda num_bins, height, width: torch.linspace(0.0, 32.0, num_bins), True),
-    #"Rotate": (lambda num_bins, height, width: torch.linspace(0.0, 135.0, num_bins), True),
+    "Identity": (lambda num_bins, height, width: None, False),
     "Brightness": (lambda num_bins, height, width: torch.linspace(0.0, 0.99, num_bins), True),
     "Color": (lambda num_bins, height, width: torch.linspace(0.0, 0.99, num_bins), True),
     "Contrast": (lambda num_bins, height, width: torch.linspace(0.0, 0.99, num_bins), True),
@@ -175,25 +196,18 @@ class CustomTA_geometric(transforms_v2.TrivialAugmentWide):
     "TranslateX": (lambda num_bins, height, width: torch.linspace(0.0, 32.0, num_bins), True),
     "TranslateY": (lambda num_bins, height, width: torch.linspace(0.0, 32.0, num_bins), True),
     "Rotate": (lambda num_bins, height, width: torch.linspace(0.0, 135.0, num_bins), True),
-    #"Brightness": (lambda num_bins, height, width: torch.linspace(0.0, 0.99, num_bins), True),
-    #"Color": (lambda num_bins, height, width: torch.linspace(0.0, 0.99, num_bins), True),
-    #"Contrast": (lambda num_bins, height, width: torch.linspace(0.0, 0.99, num_bins), True),
-    #"Sharpness": (lambda num_bins, height, width: torch.linspace(0.0, 0.99, num_bins), True),
-    #"Posterize": (lambda num_bins, height, width: (8 - (torch.arange(num_bins) / ((num_bins - 1) / 6))).round().int(), False),
-    #"Solarize": (lambda num_bins, height, width: torch.linspace(1.0, 0.0, num_bins), False),
-    #"AutoContrast": (lambda num_bins, height, width: None, False),
-    #"Equalize": (lambda num_bins, height, width: None, False)
     }
 
 class DataLoading():
-    def __init__(self, dataset, epochs=200, generated_ratio=0.0, resize = False, run=0):
+    def __init__(self, dataset, epochs=200, generated_ratio=0.0, resize = False, run=0, test_only = False):
         self.dataset = dataset
         self.generated_ratio = generated_ratio
         self.resize = resize
         self.run = run
         self.epochs = epochs
+        self.test_only = test_only
 
-    def create_transforms(self, aug_strat_check, train_aug_strat_orig, train_aug_strat_gen, RandomEraseProbability=0.0):
+    def create_transforms(self, train_aug_strat_orig, train_aug_strat_gen, RandomEraseProbability=0.0):
         # list of all data transformations used
         t = transforms.ToTensor()
         c32 = transforms.RandomCrop(32, padding=4)
@@ -204,6 +218,20 @@ class DataLoading():
         c224 = transforms.CenterCrop(224)
         rrc224 = transforms.RandomResizedCrop(224, antialias=True)
         re = transforms.RandomErasing(p=RandomEraseProbability, scale=(0.02, 0.4), value='random')
+        TAc = CustomTA_color()
+        TAg = CustomTA_geometric()
+
+        def stylization(probability=0.9, alpha_min=0.2, alpha_max=1.0):
+            vgg, decoder = style_transfer.load_models()
+            style_feats = style_transfer.load_feat_files()
+
+            Stylize = style_transfer.NSTTransform(style_feats, vgg, decoder, alpha_min=alpha_min, alpha_max=alpha_max, probability=probability)
+            return Stylize
+
+        def transform_not_found(train_aug_strat, dataset):
+            print('Training augmentation strategy', train_aug_strat, 'could not be found. Proceeding without '
+                                                                        'augmentation strategy for.', dataset, '.')
+            return transforms.Compose([self.transforms_preprocess, re]), None
 
         # transformations of validation/test set and necessary transformations for training
         # always done (even for clean images while training, when using robust loss)
@@ -223,79 +251,78 @@ class DataLoading():
             self.transforms_basic = transforms.Compose([flip])
 
         # additional transforms with tensor transformation, Random Erasing after tensor transformation
-        if aug_strat_check == True:
 
-            TAc = CustomTA_color()
-            TAg = CustomTA_geometric()
+        self.transforms_orig_gpu = None
+        self.transforms_gen_gpu = None
 
-            def stylization():
-                vgg, decoder = style_transfer.load_models()
-                style_feats = style_transfer.load_feat_files()
-
-                Stylize = style_transfer.NSTTransform(style_feats, vgg, decoder, alpha_min=0.2, alpha_max=1.0,
-                                                      probability=0.9)
-                return Stylize
-
-            def transform_not_found(train_aug_strat, dataset):
-                print('Training augmentation strategy', train_aug_strat, 'could not be found. Proceeding without '
-                                                                         'augmentation strategy for.', dataset, '.')
-                return transforms.Compose([self.transforms_preprocess, re])
-
-            transform_map = {
-                "TAorRE": RandomChoiceTransforms([transforms.Compose([TAc, self.transforms_preprocess]),
-                                                  transforms.Compose([TAg, self.transforms_preprocess]),
-                                                  transforms.Compose([self.transforms_preprocess, transforms.RandomErasing(p=1.0, scale=(0.02, 0.4), value='random')]),
-                                                  transforms.Compose([self.transforms_preprocess, transforms.RandomErasing(p=1.0, scale=(0.02, 0.4), value=0)])],
-                                            [0.4,0.3,0.15,0.15]),
-                "TAc+TAg+RE": transforms.Compose([CustomTA_color(), CustomTA_geometric(), self.transforms_preprocess, re]),
-                "TAc+TAgorRE": transforms.Compose([CustomTA_color(),
-                                         RandomChoiceTransforms([transforms.Compose([CustomTA_geometric(), self.transforms_preprocess]),
-                                                                 transforms.Compose(
-                                             [self.transforms_preprocess,
-                                              transforms.RandomErasing(p=1.0, scale=(0.02, 0.4), value='random')]),
-                                                                transforms.Compose([
-                                              self.transforms_preprocess,
-                                              transforms.RandomErasing(p=1.0, scale=(0.02, 0.4), value=0)])],
+        transform_map = { #this contain a tuple each, defining the CPU transforms later applied in the dataloader and if needed GPU transforms later applied on the batch
+            "TAorRE": (RandomChoiceTransforms([TAc,
+                                            TAg,
+                                            transforms.RandomErasing(p=1.0, scale=(0.02, 0.4), value='random'),
+                                            transforms.RandomErasing(p=1.0, scale=(0.02, 0.4), value=0)],
+                                        [0.4,0.3,0.15,0.15]),
+                        None),
+            "TAc+TAg+RE": (transforms.Compose([CustomTA_color(), CustomTA_geometric(), re]),
+                            None),
+            "TAc+TAgorRE": (transforms.Compose([CustomTA_color(),
+                                        RandomChoiceTransforms([CustomTA_geometric(),
+                                                                transforms.RandomErasing(p=1.0, scale=(0.02, 0.4), value='random'),
+                                                                transforms.RandomErasing(p=1.0, scale=(0.02, 0.4), value=0)],
                                         [6, 1, 1])]),
-                "TAc+REorTAg": RandomChoiceTransforms([transforms.Compose([TAg, self.transforms_preprocess]),
-                                                       transforms.Compose([TAc, self.transforms_preprocess,
-                                                             transforms.RandomErasing(p=0.525, scale=(0.02, 0.4),
-                                                                                      value='random')])],
-                                        [6, 8]),
-                "StyleTransfer": transforms.Compose([stylization(), self.transforms_preprocess, re]),
-                "TAorStyle0.75": transforms.Compose([RandomChoiceTransforms([transforms_v2.TrivialAugmentWide(), stylization()], [1, 3]),
-                                                    self.transforms_preprocess, re]),
-                "TAorStyle0.5": transforms.Compose([RandomChoiceTransforms([transforms_v2.TrivialAugmentWide(), stylization()], [1, 1]),
-                                                    self.transforms_preprocess, re]),
-                "TAorStyle0.25": transforms.Compose([RandomChoiceTransforms([transforms_v2.TrivialAugmentWide(), stylization()], [3, 1]),
-                                                    self.transforms_preprocess, re]),
-                "TAorStyle0.1": transforms.Compose([RandomChoiceTransforms([transforms_v2.TrivialAugmentWide(), stylization()], [9, 1]),
-                                                     self.transforms_preprocess, re]),
-                "StyleAndTA": transforms.Compose([stylization(), transforms_v2.TrivialAugmentWide(), self.transforms_preprocess, re]),
-                "TrivialAugmentWide": transforms.Compose([transforms_v2.TrivialAugmentWide(),
-                                                          self.transforms_preprocess, re]),
-                "RandAugment": transforms.Compose([transforms_v2.RandAugment(),
-                                                          self.transforms_preprocess, re]),
-                "AutoAugment": transforms.Compose([transforms_v2.AutoAugment(),
-                                                          self.transforms_preprocess, re]),
-                "AugMix": transforms.Compose([transforms_v2.AugMix(),
-                                                          self.transforms_preprocess, re]),
-                'None': transforms.Compose([self.transforms_preprocess, re])
-            }
-            self.transforms_augmentation = (transform_map[train_aug_strat_orig]
-                if train_aug_strat_orig in transform_map
-                else transform_not_found(train_aug_strat_orig, 'transforms_original'))
+                            None),
+            "TAc+REorTAg": (RandomChoiceTransforms([TAg,
+                                                    transforms.Compose([TAc, transforms.RandomErasing(p=0.525, scale=(0.02, 0.4), value='random')])],
+                            [6, 8]),
+                            None),
+            "StyleTransfer": (stylization(probability=1.0),
+                                StylizedChoiceTransforms({"unstylized": re, 
+                                                            "stylized": re})),
+            "TAorStyle0.75": (stylization(probability=0.75),
+                                StylizedChoiceTransforms({"unstylized": transforms.Compose([transforms_v2.TrivialAugmentWide(), re]), 
+                                                            "stylized": re})),
+            "TAorStyle0.5": (stylization(probability=0.5),
+                                StylizedChoiceTransforms({"unstylized": transforms.Compose([transforms_v2.TrivialAugmentWide(), re]), 
+                                                            "stylized": re})),
+            "TAorStyle0.25": (stylization(probability=0.25),
+                                StylizedChoiceTransforms({"unstylized": transforms.Compose([transforms_v2.TrivialAugmentWide(), re]), 
+                                                            "stylized": re})),
+            "TAorStyle0.1": (stylization(probability=0.1),
+                                StylizedChoiceTransforms({"unstylized": transforms.Compose([transforms_v2.TrivialAugmentWide(), re]), 
+                                                            "stylized": re})),
+            "StyleAndTA": (stylization(probability=1.0, alpha_min=0.2, alpha_max=1.0),
+                                StylizedChoiceTransforms({"unstylized": transforms.Compose([transforms_v2.TrivialAugmentWide(), re]), 
+                                                            "stylized": transforms.Compose([transforms_v2.TrivialAugmentWide(), re])})),
+            "weakerStyleAndTA": (stylization(probability=1.0, alpha_min=0.1, alpha_max=0.2),
+                                StylizedChoiceTransforms({"unstylized": transforms.Compose([transforms_v2.TrivialAugmentWide(), re]), 
+                                                            "stylized": transforms.Compose([transforms_v2.TrivialAugmentWide(), re])})),                                               
+            "Style0.5AndTA": (stylization(probability=0.5, alpha_min=0.2, alpha_max=1.0),
+                                StylizedChoiceTransforms({"unstylized": transforms.Compose([transforms_v2.TrivialAugmentWide(), re]), 
+                                                            "stylized": transforms.Compose([transforms_v2.TrivialAugmentWide(), re])})),
+            "TrivialAugmentWide": (None,
+                                transforms.Compose([transforms_v2.TrivialAugmentWide(), re])),
+            "RandAugment": (None,
+                                transforms.Compose([transforms_v2.RandAugment(), re])),
+            "AutoAugment": (None,
+                                transforms.Compose([transforms_v2.AutoAugment(), re])),
+            "AugMix": (None,
+                                transforms.Compose([transforms_v2.AugMix(), re])),
+            'None': (None, 
+                                re),
+        }
 
-            self.transforms_generated = (transform_map[train_aug_strat_gen]
-                                            if train_aug_strat_gen in transform_map
-                                            else transform_not_found(train_aug_strat_gen, 'transforms_generated'))
-        else:
-            self.transforms_augmentation = transforms.Compose([self.transforms_preprocess, re])
+        self.transforms_orig_gpu, self.transforms_orig_cpu = (transform_map[train_aug_strat_orig]
+            if train_aug_strat_orig in transform_map
+            else transform_not_found(train_aug_strat_orig, 'transforms_original'))
+
+        self.transforms_gen_gpu, self.transforms_gen_cpu = (transform_map[train_aug_strat_gen]
+                                        if train_aug_strat_gen in transform_map
+                                        else transform_not_found(train_aug_strat_gen, 'transforms_generated'))
+
 
     def load_base_data(self, validontest, run=0):
 
         # Trainset and Validset
-        if self.transforms_augmentation is not None:
+        if self.test_only == False:
             if self.dataset == 'ImageNet' or self.dataset == 'TinyImageNet':
                 self.base_trainset = torchvision.datasets.ImageFolder(root=f'./experiments/data/{self.dataset}/train')
             else:
@@ -337,9 +364,8 @@ class DataLoading():
         else:
             print('Dataset not loadable')
         self.num_classes = len(self.testset.classes)
-
+    
     def load_augmented_traindata(self, target_size, epoch=0, robust_samples=0):
-
         self.robust_samples = robust_samples
         self.target_size = target_size
         self.generated_dataset = np.load(f'./experiments/data/{self.dataset}-add-1m-dm.npz',
@@ -351,18 +377,22 @@ class DataLoading():
         random.seed(self.epoch + self.epochs * self.run)
 
         # Prepare lists for combined data
-        images = [None] * self.target_size
-        labels = [None] * self.target_size
         sources = [None] * self.target_size
+        stylized = [None] * self.target_size
 
         if self.generated_dataset == None or self.generated_ratio == 0.0:
-            images, labels = zip(*self.base_trainset)
-            if isinstance(images[0], torch.Tensor):
-                images = TF.to_pil_image(images)
+            self.num_generated = 0
+            self.num_original = self.target_size
+            generated_images, generated_labels = [], []
+            original_images, original_labels = map(list, zip(*self.base_trainset))
+            if isinstance(original_images[0], torch.Tensor):
+                original_images = TF.to_pil_image(original_images)
             sources = [True] * len(self.base_trainset)
+        
         else:
             self.num_generated = int(self.target_size * self.generated_ratio)
             self.num_original = self.target_size - self.num_generated
+            
             # Create a single permutation for the whole epoch
             original_perm = torch.randperm(len(self.base_trainset))
             generated_perm = torch.randperm(len(self.generated_dataset['image']))
@@ -370,26 +400,47 @@ class DataLoading():
             original_indices = original_perm[0:self.num_original]
             generated_indices = generated_perm[0:self.num_generated]
             generated_images = list(map(Image.fromarray, self.generated_dataset['image'][generated_indices]))
-            generated_labels = self.generated_dataset['label'][generated_indices]
+            #generated_images = torch.from_numpy(self.generated_dataset['image'][generated_indices]).permute(0, 3, 1, 2).float() / 255.0
+            generated_labels = list(self.generated_dataset['label'][generated_indices])
 
             original_subset = Subset(self.base_trainset, original_indices)
-            original_images, original_labels = zip(*original_subset)
+            original_images, original_labels = map(list, zip(*original_subset))
             if isinstance(original_images[0], torch.Tensor):
                 original_images = TF.to_pil_image(original_images)
 
-            # Transform and append original data
-            images[:self.num_original] = original_images
-            labels[:self.num_original] = original_labels
             sources[:self.num_original] = [True] * self.num_original
-
-            # Append NPZ data
-            images[self.num_original:self.target_size] = generated_images
-            labels[self.num_original:self.target_size] = generated_labels
             sources[self.num_original:self.target_size] = [False] * self.num_generated
 
-        self.trainset = AugmentedDataset(images, labels, sources, self.transforms_preprocess,
-                                         self.transforms_basic, self.transforms_augmentation, self.transforms_generated,
-                                         robust_samples)
+        #Here we do mixing as a GPU transform
+        batch_size = 250
+
+        # Process original images
+        if self.transforms_orig_gpu is None:
+            stylized[:self.num_original] = [False] * self.num_original  # All original images are untransformed
+        else:
+            # Process original images in batches if transform is provided
+            for i in range(0, self.num_original, batch_size):
+                batch = original_images[i:min(i + batch_size, self.num_original)]
+                batch = torch.stack([self.transforms_preprocess(image) for image in batch])
+                batch, batch_stylized = self.transforms_orig_gpu(batch)
+                original_images[i:min(i + batch_size, self.num_original)] = batch
+                stylized[i:min(i + batch_size, self.num_original)] = batch_stylized
+
+        # Process generated images
+        if self.transforms_gen_gpu is None or self.generated_dataset == None or self.generated_ratio == 0.0:
+            stylized[self.num_original:self.target_size] = [False] * self.num_generated  # All original images are untransformed
+        else:
+            # Process generated images in batches if transform is provided
+            for i in range(0, self.num_generated, batch_size):
+                batch = generated_images[i:min(i + batch_size, self.num_generated)]
+                batch = torch.stack([self.transforms_preprocess(image) for image in batch])
+                batch, batch_stylized = self.transforms_gen_gpu(batch)
+                generated_images[i:min(i + batch_size, self.num_generated)] = batch
+                stylized[i:min(i + batch_size, self.num_generated)] = batch_stylized
+            
+        self.trainset = AugmentedDataset(original_images + generated_images, original_labels + generated_labels, sources, stylized, 
+                                        self.transforms_preprocess, self.transforms_basic, self.transforms_orig_cpu, 
+                                        self.transforms_orig_gpu, self.transforms_gen_cpu, self.transforms_gen_gpu, robust_samples)
 
     def load_data_c(self, subset, subsetsize):
 
