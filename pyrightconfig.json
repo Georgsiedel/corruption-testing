@@ -1,0 +1,20 @@
+{
+    "exclude": [
+      "**/node_modules",
+      "**/__pycache__",
+      "experiments/data",
+      "experiments/trained_models",
+      ".git",
+      ".idea"
+    ],
+  
+    "defineConstant": {
+      "DEBUG": true
+    },
+    
+    "reportMissingImports": "error",
+    "reportMissingTypeStubs": false,
+
+    "pythonVersion": "3.9",
+    "pythonPlatform": "Windows",
+  }

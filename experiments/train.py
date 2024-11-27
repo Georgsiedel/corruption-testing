@@ -9,6 +9,7 @@ if module_path not in sys.path:
 import argparse
 import importlib
 from multiprocessing import freeze_support
+import torch.multiprocessing as mp
 
 import numpy as np
 from tqdm import tqdm
@@ -132,18 +133,14 @@ def train_epoch(pbar):
 
     model.train()
     correct, total, train_loss, avg_train_loss = 0, 0, 0, 0
-    for batch_idx, (inputs, targets) in enumerate(trainloader):
+    for batch_idx, (inputs, targets, sources, apply_gpu_transform) in enumerate(trainloader):
         optimizer.zero_grad()
-
         if criterion.robust_samples >= 1:
-            inputs = torch.cat(inputs, 0)
-        inputs, targets = inputs.to(device, dtype=torch.float32), targets.to(device)
+            inputs = torch.cat((inputs[0], Dataloader.transforms_gpu(torch.cat(inputs[1:], 0), sources, apply_gpu_transform[1:])), 0)
+        else:
+            inputs = Dataloader.transforms_gpu(inputs, sources, apply_gpu_transform)
         
-        #transformed_batch = torch.stack([Dataloader.transforms_orig_gpu(image) if (source==True and Dataloader.transforms_orig_gpu != None) else
-        #                                Dataloader.transforms_gen_gpu(image) if (source==False and Dataloader.transforms_gen_gpu != None) else
-        #                                image
-        #                                for image, source in zip(inputs, sources)])
-
+        inputs, targets = inputs.to(device, dtype=torch.float32), targets.to(device)
         with torch.cuda.amp.autocast():
             outputs, mixed_targets = model(inputs, targets, criterion.robust_samples, train_corruptions, args.mixup['alpha'],
                                            args.mixup['p'], args.manifold['apply'], args.manifold['noise_factor'],
@@ -224,7 +221,9 @@ def valid_epoch(pbar, net):
 if __name__ == '__main__':
     # Load and transform data
     print('Preparing data..')
+
     freeze_support()
+    mp.set_start_method('spawn', force=True)
 
     lossparams = args.trades_lossparams | args.robust_lossparams | args.lossparams
     criterion = losses.Criterion(args.loss, trades_loss=args.trades_loss, robust_loss=args.robust_loss, **lossparams)
@@ -233,6 +232,14 @@ if __name__ == '__main__':
     Dataloader.create_transforms(args.train_aug_strat_orig, args.train_aug_strat_gen, args.RandomEraseProbability)
     Dataloader.load_base_data(args.validontest, args.run)
     testsets_c = Dataloader.load_data_c(subset=args.validonc, subsetsize=100)
+
+    vgg, decoder = style_transfer.load_models()
+    style_feats = style_transfer.load_feat_files()
+
+    Stylize = style_transfer.NSTTransform(style_feats, vgg, decoder, alpha_min=0.2, alpha_max=1.0, probability=0.3)
+    re = transforms.RandomErasing(p=0.3, scale=(0.02, 0.4), value='random')
+    ta = transforms.TrivialAugmentWide()
+    comp = transforms.Compose([ta, re])
 
     # Construct model
     print(f'\nBuilding {args.modeltype} model with {args.modelparams} | Loss Function: {args.loss}, Stability Loss: {args.robust_loss}, Trades Loss: {args.trades_loss}')
@@ -321,6 +328,7 @@ if __name__ == '__main__':
 
     # Save final model
     if args.swa['apply'] == True:
+        print('Saving final SWA model')
         if criterion.robust_samples >= 1:
             SWA_Loader = data.SwaLoader(trainloader, args.batchsize, criterion.robust_samples)
             trainloader = SWA_Loader.get_swa_dataloader()

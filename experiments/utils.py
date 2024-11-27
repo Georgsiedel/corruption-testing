@@ -389,11 +389,11 @@ class TestTracking:
 
         test_corruptions_string = np.array(['Standard_Acc', 'RMSCE'])
         if self.test_on_c == True:
-            test_corruptions_label = np.loadtxt('./experiments/data/c-labels.txt', dtype=list)
+            test_corruptions_label = np.loadtxt('../data/c-labels.txt', dtype=list)
             if self.dataset == 'CIFAR10' or self.dataset == 'CIFAR100':
-                test_corruptions_bar_label = np.loadtxt('./experiments/data/c-bar-labels-cifar.txt', dtype=list)
+                test_corruptions_bar_label = np.loadtxt('../data/c-bar-labels-cifar.txt', dtype=list)
             elif self.dataset == 'ImageNet' or self.dataset == 'TinyImageNet':
-                test_corruptions_bar_label = np.loadtxt('./experiments/data/c-bar-labels-IN.txt', dtype=list)
+                test_corruptions_bar_label = np.loadtxt('../data/c-bar-labels-IN.txt', dtype=list)
             test_corruptions_string = np.append(test_corruptions_string, test_corruptions_label, axis=0)
             test_corruptions_string = np.append(test_corruptions_string, test_corruptions_bar_label, axis=0)
             test_corruptions_string = np.append(test_corruptions_string,

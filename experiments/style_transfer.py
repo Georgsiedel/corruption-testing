@@ -80,7 +80,9 @@ class NSTTransform(transforms.Transform):
     @torch.no_grad()
     def __call__(self, x):
 
-        x = x.to(device)
+        #x = x.to(device)
+        if x.size(0) == 0:
+            return x
 
         x = self.upsample(x)
         ratio = int(math.floor(x.size(0)*self.probability + random.random()))
@@ -91,15 +93,16 @@ class NSTTransform(transforms.Transform):
         x[idy] = self.style_transfer(self.vgg, self.decoder, x[idy], self.style_features[idx])
 
         stl_imgs = self.downsample(x)
-        stl_imgs = stl_imgs.detach().cpu()
+        #stl_imgs = stl_imgs.detach().cpu()
+        
         # Create a boolean mask: True if image stylized, False if not
-        stylized = torch.isin(torch.arange(stl_imgs.size(0)), idy)
+        #stylized = torch.isin(torch.arange(stl_imgs.size(0)), idy)
 
         stl_imgs = self.norm_style_tensor(stl_imgs)
 
-        stl_imgs = [self.to_pil_img(image) for image in stl_imgs]
+        #stl_imgs = [self.to_pil_img(image) for image in stl_imgs]
 
-        return stl_imgs, stylized
+        return stl_imgs #, stylized
 
     @torch.no_grad()
     def norm_style_tensor(self, tensor):
@@ -107,8 +110,8 @@ class NSTTransform(transforms.Transform):
         max_val = tensor.max()
 
         normalized_tensor = (tensor - min_val) / (max_val - min_val)
-        scaled_tensor = normalized_tensor * 255
-        scaled_tensor = scaled_tensor.byte() # converts dtype to torch.uint8 between 0 and 255 #here
+        #scaled_tensor = normalized_tensor * 255
+        #scaled_tensor = scaled_tensor.byte() # converts dtype to torch.uint8 between 0 and 255 #here
         return normalized_tensor
 
     @torch.no_grad()

@@ -7,15 +7,15 @@ if __name__ == '__main__':
     os.environ["CUDA_LAUNCH_BLOCKING"] = "1" #prevents "CUDA error: unspecified launch failure" and is recommended for some illegal memory access errors #increases train time by ~5-15%
     #os.environ["CUDA_VISIBLE_DEVICES"] = "1" #this blocks the spawn of multiple workers
 
-    for experiment in [10,12,11,12,10,11,12]:
+    for experiment in [11,13,14,15,16,11,13,14,15,16,11,13,14,15,16,11,13,14,15,16,11,13,14,15,16]:
 
         configname = (f'experiments.configs.config{experiment}')
         config = importlib.import_module(configname)
 
         print('Starting experiment #',experiment, 'on', config.dataset, 'dataset')
         runs = 1
-
-        if experiment in [10,11,12]:
+        
+        if experiment in [11,13,14,15,16]:
             resume = True
         else:
             resume = False
@@ -71,7 +71,7 @@ if __name__ == '__main__':
 
         # Calculate accuracy and robust accuracy, evaluating each trained network on each corruption
 
-        if experiment in [10,12]:
+        if experiment in [11]:
             print('Beginning metric evaluation')
             cmdeval = "python experiments/eval.py --resume={} --experiment={} --runs={} --batchsize={} --dataset={} " \
                     "--modeltype={} --modelparams=\"{}\" --resize={} --combine_test_corruptions={} --number_workers={} " \
